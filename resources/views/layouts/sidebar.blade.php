@@ -5,7 +5,7 @@
         {{-- Ganti ikon Font Awesome dengan gambar logo Anda --}}
         <img src="{{ asset('../img/binatarunalogo.png') }}" alt="Logo BinaTaruna" class="sidebar-brand-logo">
     </div>
-    <div class="sidebar-brand-text mx-2 ">BinaTarunaa</div>
+    <div class="sidebar-brand-text mx-2 ">BinaTaruna</div>
 </a>
 
     <li class="nav-item {{ request()->is('dashboard') ? 'active' : '' }}">
