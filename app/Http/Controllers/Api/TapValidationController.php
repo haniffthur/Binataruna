@@ -1,4 +1,8 @@
 <?php
+// =====================================
+// FILE 2: TAP VALIDATION CONTROLLER
+// Path: app/Http/Controllers/Api/TapValidationController.php
+// =====================================
 
 namespace App\Http\Controllers\Api;
 

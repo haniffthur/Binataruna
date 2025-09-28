@@ -25,6 +25,7 @@ use PhpOffice\PhpSpreadsheet\Cell\DataValidation;
 use PhpOffice\PhpSpreadsheet\Comment; // Tambahkan ini
 use PhpOffice\PhpSpreadsheet\RichText\RichText; // Tambahkan ini
 use Illuminate\Support\Str; // <-- TAMBAHKAN INI
+use App\Exports\AttendanceReportExport;
 
 class MemberController extends Controller
 {
@@ -684,4 +685,88 @@ class MemberController extends Controller
         // 4. Kembalikan sebagai file yang akan diunduh
         return Storage::disk('public')->download($filePath, $newFileName);
     }
+
+  public function attendanceReportForm()
+    {
+        $schoolClasses = SchoolClass::orderBy('name')->get();
+        
+        // BARU: Ambil semua data member untuk filter Select2
+        // Kita hanya butuh 'id' dan 'name' untuk efisiensi.
+        $members = Member::select('id', 'name')->orderBy('name')->get();
+        
+        // Set default periode (minggu ini)
+        $defaultStartDate = Carbon::now()->startOfWeek()->format('Y-m-d');
+        $defaultEndDate = Carbon::now()->endOfWeek()->format('Y-m-d');
+        
+        // Kirim semua data yang dibutuhkan ke view
+        return view('members.attendance-report', compact(
+            'schoolClasses', 
+            'members', // Tambahkan 'members' di sini
+            'defaultStartDate', 
+            'defaultEndDate'
+        ));
+    }
+
+    /**
+     * Export laporan absensi ke Excel
+     */
+    public function exportAttendanceReport(Request $request)
+    {
+        try {
+            // Validasi input yang sudah disesuaikan
+            $request->validate([
+                'start_date' => 'required|date',
+                'end_date' => 'required|date|after_or_equal:start_date',
+                'school_class_id' => 'nullable|exists:school_classes,id', // Sesuaikan nama tabel jika perlu
+                'member_id' => 'nullable|exists:members,id' // DIUBAH: dari 'name' ke 'member_id'
+            ]);
+
+            // Siapkan filter yang sudah disesuaikan
+            $filters = [
+                'start_date' => $request->start_date,
+                'end_date' => $request->end_date,
+                'school_class_id' => $request->school_class_id,
+                'member_id' => $request->member_id // DIUBAH: dari 'name' ke 'member_id'
+            ];
+
+            // Generate nama file
+            $startDate = Carbon::parse($request->start_date)->format('d-M-Y');
+            $endDate = Carbon::parse($request->end_date)->format('d-M-Y');
+            $fileName = "Laporan_Absensi_{$startDate}_sampai_{$endDate}.xlsx";
+
+            // Download Excel dengan mengirimkan filter baru
+            return Excel::download(new AttendanceReportExport($filters), $fileName);
+            
+        } catch (\Exception $e) {
+            return redirect()->back()
+                ->withInput()
+                ->withErrors(['error' => 'Gagal membuat laporan absensi: ' . $e->getMessage()]);
+        }
+    }
+   public function search(Request $request)
+{
+    $query = $request->input('q');
+    
+    // Cari member berdasarkan query, dan Eager Load relasi masterCard untuk efisiensi
+    $members = Member::with('masterCard') // <-- EAGER LOAD
+                     ->where('name', 'LIKE', "%{$query}%")
+                     ->limit(10)
+                     ->get();
+
+    // Ubah format data agar sesuai dengan yang diharapkan JavaScript
+    $formattedMembers = $members->map(function($member) {
+        return [
+            'id'   => $member->id,
+            'text' => $member->name,
+            // Ambil cardno dari relasi masterCard, beri null jika tidak ada kartu
+            'cardno' => $member->masterCard->cardno ?? null 
+        ];
+    });
+
+    // Kembalikan dalam format yang benar
+    return response()->json([
+        'results' => $formattedMembers
+    ]);
+}
+    
 }

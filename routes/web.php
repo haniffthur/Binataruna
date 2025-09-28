@@ -1,13 +1,9 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-
-// Controller dari file Anda
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Dashboard;
 use App\Http\Controllers\UserController;
-
-// Controller yang kita buat bersama
 use App\Http\Controllers\MasterCardController;
 use App\Http\Controllers\AccessRuleController;
 use App\Http\Controllers\MemberController;
@@ -19,8 +15,7 @@ use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\TaplogsController;
 use App\Http\Controllers\TicketScanLogController;
 use App\Http\Controllers\Api\MemberDetailController;
-
-
+use App\Http\Controllers\ManualAttendanceController;
 
 /*
 |--------------------------------------------------------------------------
@@ -28,81 +23,91 @@ use App\Http\Controllers\Api\MemberDetailController;
 |--------------------------------------------------------------------------
 */
 
+// Rute Publik (Tidak perlu login)
 Route::get('/', function () {
-    // Sebaiknya arahkan ke login jika belum terotentikasi
     return redirect()->route('login');
 });
 
-// Login (Struktur Anda dipertahankan)
 Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
 Route::post('/login', [LoginController::class, 'login']);
-Route::get('/logout', [LoginController::class, 'logout'])->name('logout'); // Method POST lebih disarankan untuk logout
-
-// routes/web.php
-// ... (semua rute Anda yang sudah ada) ...
+// Disarankan menggunakan POST untuk logout demi keamanan (mencegah CSRF)
+Route::post('/logout', [LoginController::class, 'logout'])->name('logout');
 
 
-    Route::get('/members/download-template', [MemberController::class, 'downloadTemplate'])->name('members.download.template');
-    Route::post('/members/import', [MemberController::class, 'import'])->name('members.import');
-    Route::get('/members/export-report', [MemberController::class, 'exportReport'])->name('members.export.report');
-        Route::get('/members/{member}/download-photo', [MemberController::class, 'downloadPhoto'])->name('members.download.photo');
-
-
-// Grup untuk semua halaman yang memerlukan login
+// --- GRUP UNTUK SEMUA HALAMAN YANG MEMERLUKAN LOGIN ---
 Route::middleware(['auth'])->group(function () {
-    Route::get('/dashboard/report', [Dashboard::class, 'generateReport'])->name('dashboard.report');
 
-
-    // Rute Dashboard Anda
-    Route::get('/ticket-scan-logs', [TicketScanLogController::class, 'index'])->name('ticket-scan-logs.index');
-
+    // == DASHBOARD ==
     Route::get('/dashboard', [Dashboard::class, 'index'])->name('dashboard');
-Route::get('/api/dashboard/chart-data', [Dashboard::class, 'getChartData'])->name('api.dashboard.chart-data');
+    Route::get('/dashboard/report', [Dashboard::class, 'generateReport'])->name('dashboard.report');
+    Route::get('/api/dashboard/chart-data', [Dashboard::class, 'getChartData'])->name('api.dashboard.chart-data');
 
-    Route::get('/tap-logs', [TaplogsController::class, 'index'])->name('tap-logs.index');
-    Route::get('/api/ticket-scan-logs/latest', [TicketScanLogController::class, 'fetchLatest'])->name('api.ticket-scan-logs.latest');
-
-    // Rute UserController Anda (untuk mengelola akun login)
+    // == PENGELOLAAN PENGGUNA & AKSES ==
     Route::resource('users', UserController::class);
-
-    Route::get('/api/members/{member}', [MemberDetailController::class, 'show'])->name('api.members.show');
-    Route::get('/api/tap-logs/latest', [TaplogsController::class, 'fetchLatest'])->name('api.tap-logs.latest');
-     Route::get('/tap-logs/export-excel', [TaplogsController::class, 'exportExcel'])->name('tap-logs.export.excel');
-
-    // === RUTE BARU DITAMBAHKAN DI SINI ===
-
-    // Rute Master Data
-    Route::resource('master-cards', MasterCardController::class);
     Route::resource('access-rules', AccessRuleController::class);
 
-    // Rute Manajemen Peran
-    Route::resource('members', MemberController::class);
-
-
- Route::get('/transactions/export-excel', [TransactionController::class, 'exportExcel'])->name('transactions.export.excel');
-
-    
-    Route::resource('coaches', CoachController::class);
-    Route::resource('staffs', StaffController::class);
-
-     Route::get('/non-member-receipt/{id}', [TransactionController::class, 'showNonMemberReceipt'])->name('non-member-receipt.show');
-
-    // Rute Produk
+    // == MASTER DATA ==
+    Route::resource('master-cards', MasterCardController::class);
     Route::resource('classes', SchoolClassController::class);
     Route::resource('tickets', TicketController::class);
 
-    Route::get('/non-member-transactions/{id}', [TransactionController::class, 'showNonMemberDetail'])->name('non-member-transactions.show');
-});
-Route::get('/transactions', [TransactionController::class, 'index'])->name('transactions.index');
+    // == MANAJEMEN MEMBER (Dikelompokkan) ==
+    Route::prefix('members')->name('members.')->group(function () {
+        Route::get('/download-template', [MemberController::class, 'downloadTemplate'])->name('download.template');
+        Route::post('/import', [MemberController::class, 'import'])->name('import');
+        Route::get('/export-report', [MemberController::class, 'exportReport'])->name('export.report');
+        Route::get('/{member}/download-photo', [MemberController::class, 'downloadPhoto'])->name('download.photo');
+        
+        // --- Laporan Absensi ---
+        Route::get('/attendance-report', [MemberController::class, 'attendanceReportForm'])->name('attendance-report');
+        // NAMA RUTE DIPERBAIKI AGAR SESUAI DENGAN YANG DIPANGGIL DI BLADE
+        Route::get('/attendance-report/export', [MemberController::class, 'exportAttendanceReport'])->name('export-attendance-report');
+    });
+    Route::resource('members', MemberController::class); // Tetap di luar prefix agar URL standarnya (/members, /members/create) tidak berubah
 
-// Rute Transaksi
-Route::prefix('transactions')->name('transactions.')->group(function () {
-    Route::get('/member/create', [TransactionController::class, 'createMemberTransaction'])->name('member.create');
-    Route::post('/member', [TransactionController::class, 'storeMemberTransaction'])->name('member.store');
+    // == MANAJEMEN COACH & STAFF ==
+    Route::resource('coaches', CoachController::class);
+    Route::resource('staffs', StaffController::class);
 
-    Route::get('/non-member/create', [TransactionController::class, 'createNonMemberTransaction'])->name('non-member.create');
-    Route::post('/non-member', [TransactionController::class, 'storeNonMemberTransaction'])->name('non-member.store');
+    // == TRANSAKSI (Dikelompokkan dan dilindungi Auth) ==
+    Route::prefix('transactions')->name('transactions.')->group(function () {
+        Route::get('/', [TransactionController::class, 'index'])->name('index');
+        Route::get('/export-excel', [TransactionController::class, 'exportExcel'])->name('export.excel');
+        
+        // Transaksi Member
+        Route::get('/member/create', [TransactionController::class, 'createMemberTransaction'])->name('member.create');
+        Route::post('/member', [TransactionController::class, 'storeMemberTransaction'])->name('member.store');
+        
+        // Transaksi Non-Member
+        Route::get('/non-member/create', [TransactionController::class, 'createNonMemberTransaction'])->name('non-member.create');
+        Route::post('/non-member', [TransactionController::class, 'storeNonMemberTransaction'])->name('non-member.store');
+        Route::get('/non-member-receipt/{id}', [TransactionController::class, 'showNonMemberReceipt'])->name('non-member-receipt.show');
+        Route::get('/non-member-transactions/{id}', [TransactionController::class, 'showNonMemberDetail'])->name('non-member-transactions.show');
+    });
 
+    // == LOGS ==
+    Route::get('/tap-logs', [TaplogsController::class, 'index'])->name('tap-logs.index');
+    Route::get('/tap-logs/export-excel', [TaplogsController::class, 'exportExcel'])->name('tap-logs.export.excel');
+    Route::get('/ticket-scan-logs', [TicketScanLogController::class, 'index'])->name('ticket-scan-logs.index');
 
+    // == ABSENSI MANUAL (Dikelompokkan) ==
+    Route::prefix('manual-attendance')->name('manual.attendance.')->group(function () {
+        Route::get('/', [ManualAttendanceController::class, 'index'])->name('index');
+        Route::post('/', [ManualAttendanceController::class, 'processAttendance'])->name('process');
+        Route::get('/recent', [ManualAttendanceController::class, 'recent'])->name('recent');
+        // NAMA RUTE DIPERBAIKI AGAR SESUAI DENGAN YANG DIPANGGIL DI JAVASCRIPT
+        Route::get('/search', [ManualAttendanceController::class, 'searchMembers'])->name('search');
+    });
+
+    // == API (Internal) ==
+    // Rute API sebaiknya dipisah ke routes/api.php, tapi untuk saat ini kita kelompokkan di sini
+    Route::prefix('api')->name('api.')->group(function() {
+        Route::get('/members/{member}', [MemberDetailController::class, 'show'])->name('members.show');
+        Route::get('/tap-logs/latest', [TaplogsController::class, 'fetchLatest'])->name('tap-logs.latest');
+        Route::get('/ticket-scan-logs/latest', [TicketScanLogController::class, 'fetchLatest'])->name('ticket-scan-logs.latest');
+    });
+
+    Route::get('/manual-attendance/search', [ManualAttendanceController::class, 'searchMembers'])
+     ->name('manual.attendance.search');
 
 });
