@@ -25,6 +25,7 @@ class AttendanceReportExport implements FromCollection, WithHeadings, WithMappin
     protected $filters;
     protected $startDate;
     protected $endDate;
+    protected $tapTimeCategory; // <-- PROPERTI BARU DITAMBAHKAN
     protected $memberCounter = 0;
     protected $totalMembers = 0;
     protected $totalAttendance = 0;
@@ -41,6 +42,10 @@ class AttendanceReportExport implements FromCollection, WithHeadings, WithMappin
         // Set periode default jika tidak ada filter tanggal
         $this->startDate = isset($filters['start_date']) ? Carbon::parse($filters['start_date']) : Carbon::now()->startOfWeek();
         $this->endDate = isset($filters['end_date']) ? Carbon::parse($filters['end_date']) : Carbon::now()->endOfWeek();
+        
+        // === TAMBAHKAN INI ===
+        // Simpan filter waktu tap
+        $this->tapTimeCategory = $filters['tap_time_category'] ?? null;
     }
 
     /**
@@ -56,11 +61,10 @@ class AttendanceReportExport implements FromCollection, WithHeadings, WithMappin
                 'master_card_id'
             );
 
-        // Terapkan filter yang diterima dari controller (sama seperti MembersExport)
-       if (!empty($this->filters['member_id'])) {
-    // Gunakan 'where' dengan ID, bukan 'like' dengan nama
-    $members->where('id', $this->filters['member_id']); 
-}
+        // Terapkan filter yang diterima dari controller
+        if (!empty($this->filters['member_id'])) {
+            $members->where('id', $this->filters['member_id']); 
+        }
 
         if (!empty($this->filters['school_class_id'])) {
             $members->where('school_class_id', $this->filters['school_class_id']);
@@ -70,27 +74,47 @@ class AttendanceReportExport implements FromCollection, WithHeadings, WithMappin
             $members->whereDate('join_date', $this->filters['join_date']);
         }
 
-        // Urutkan berdasarkan kelas terlebih dahulu, kemudian nama member secara alfabetis
-        // (sama seperti MembersExport)
+        // Urutkan berdasarkan kelas terlebih dahulu, kemudian nama member
         $result = $members->get()->sortBy([
-            ['schoolClass.name', 'asc'],  // Urutkan berdasarkan nama kelas
-            ['name', 'asc']               // Kemudian urutkan berdasarkan nama member
+            ['schoolClass.name', 'asc'],
+            ['name', 'asc']
         ]);
 
         // Hitung attendance untuk setiap member
         $membersWithAttendance = $result->map(function ($member) {
-            // Hitung jumlah tap granted dalam periode
             $attendanceCount = 0;
             
             if ($member->masterCard && $member->masterCard->id) {
                 $this->membersWithCard++;
-                $attendanceCount = TapLog::where('master_card_id', $member->masterCard->id)
+
+                // === LOGIKA QUERY DIUBAH UNTUK MENERAPKAN FILTER WAKTU ===
+                
+                // 1. Buat query dasar
+                $tapQuery = TapLog::where('master_card_id', $member->masterCard->id)
                     ->where('status', 1) // Status granted
                     ->whereBetween('tapped_at', [
                         $this->startDate->startOfDay(),
                         $this->endDate->endOfDay()
-                    ])
-                    ->count();
+                    ]);
+
+                // 2. Terapkan filter waktu tap JIKA ada
+                if ($this->tapTimeCategory) {
+                    if ($this->tapTimeCategory == 'pagi') {
+                        $tapQuery->whereTime('tapped_at', '>=', '01:00:00')
+                                 ->whereTime('tapped_at', '<=', '11:59:59');
+                    } elseif ($this->tapTimeCategory == 'siang') {
+                        $tapQuery->whereTime('tapped_at', '>=', '12:00:00')
+                                 ->whereTime('tapped_at', '<=', '14:59:59');
+                    } elseif ($this->tapTimeCategory == 'sore') {
+                        $tapQuery->whereTime('tapped_at', '>=', '15:00:00')
+                                 ->whereTime('tapped_at', '<=', '18:00:00');
+                    }
+                }
+
+                // 3. Hitung hasilnya
+                $attendanceCount = $tapQuery->count();
+                // === AKHIR PERUBAHAN LOGIKA QUERY ===
+
             } else {
                 $this->membersWithoutCard++;
             }
@@ -120,7 +144,7 @@ class AttendanceReportExport implements FromCollection, WithHeadings, WithMappin
     }
 
     /**
-     * Header untuk Excel dengan styling profesional
+     * Header untuk Excel
      */
     public function headings(): array
     {
@@ -142,15 +166,15 @@ class AttendanceReportExport implements FromCollection, WithHeadings, WithMappin
         
         return [
             $this->memberCounter,
-            strtoupper($member->name), // Nama dalam huruf kapital untuk konsistensi
+            strtoupper($member->name),
             $member->schoolClass->name ?? 'Belum Ditentukan',
             $member->masterCard->cardno ?? 'Belum Terdaftar',
-            $member->attendance_count ?? 0 // Jumlah kehadiran
+            $member->attendance_count ?? 0
         ];
     }
 
     /**
-     * Styling untuk worksheet (disesuaikan dengan MembersExport)
+     * Styling untuk worksheet
      */
     public function styles(Worksheet $sheet)
     {
@@ -164,7 +188,7 @@ class AttendanceReportExport implements FromCollection, WithHeadings, WithMappin
                 ],
                 'fill' => [
                     'fillType' => Fill::FILL_SOLID,
-                    'startColor' => ['rgb' => '2E8B57'] // Hijau untuk attendance report
+                    'startColor' => ['rgb' => '2E8B57'] // Hijau
                 ],
                 'alignment' => [
                     'horizontal' => Alignment::HORIZONTAL_CENTER,
@@ -183,9 +207,7 @@ class AttendanceReportExport implements FromCollection, WithHeadings, WithMappin
                     'horizontal' => Alignment::HORIZONTAL_CENTER,
                     'vertical' => Alignment::VERTICAL_CENTER,
                 ],
-                'font' => [
-                    'size' => 10
-                ]
+                'font' => ['size' => 10]
             ],
             // Style untuk kolom Nama (kolom B)
             'B:B' => [
@@ -193,9 +215,7 @@ class AttendanceReportExport implements FromCollection, WithHeadings, WithMappin
                     'horizontal' => Alignment::HORIZONTAL_LEFT,
                     'vertical' => Alignment::VERTICAL_CENTER,
                 ],
-                'font' => [
-                    'size' => 10
-                ]
+                'font' => ['size' => 10]
             ],
             // Style untuk kolom Kelas (kolom C)
             'C:C' => [
@@ -203,9 +223,7 @@ class AttendanceReportExport implements FromCollection, WithHeadings, WithMappin
                     'horizontal' => Alignment::HORIZONTAL_CENTER,
                     'vertical' => Alignment::VERTICAL_CENTER,
                 ],
-                'font' => [
-                    'size' => 10
-                ]
+                'font' => ['size' => 10]
             ],
             // Style untuk kolom RFID (kolom D)
             'D:D' => [
@@ -215,7 +233,7 @@ class AttendanceReportExport implements FromCollection, WithHeadings, WithMappin
                 ],
                 'font' => [
                     'size' => 10,
-                    'name' => 'Consolas' // Font monospace untuk nomor kartu
+                    'name' => 'Consolas'
                 ]
             ],
             // Style untuk kolom Kehadiran (kolom E)
@@ -227,7 +245,7 @@ class AttendanceReportExport implements FromCollection, WithHeadings, WithMappin
                 'font' => [
                     'size' => 11,
                     'bold' => true,
-                    'color' => ['rgb' => '2E8B57'] // Hijau untuk highlight attendance
+                    'color' => ['rgb' => '2E8B57']
                 ]
             ]
         ];
@@ -275,13 +293,13 @@ class AttendanceReportExport implements FromCollection, WithHeadings, WithMappin
                     ]
                 ]);
 
-                // Zebra striping untuk baris data (alternating colors)
+                // Zebra striping
                 for ($i = 2; $i <= $highestRow; $i++) {
                     if ($i % 2 == 0) {
                         $sheet->getStyle('A' . $i . ':E' . $i)->applyFromArray([
                             'fill' => [
                                 'fillType' => Fill::FILL_SOLID,
-                                'startColor' => ['rgb' => 'F2F2F2'] // Abu-abu terang
+                                'startColor' => ['rgb' => 'F2F2F2']
                             ]
                         ]);
                     }
@@ -316,35 +334,48 @@ class AttendanceReportExport implements FromCollection, WithHeadings, WithMappin
                 $sheet->setCellValue('A' . $footerRow, 'STATISTIK LAPORAN KEHADIRAN');
                 $sheet->setCellValue('A' . ($footerRow + 1), 'Periode: ' . $periodText);
                 
+                // === TAMBAHKAN INFO FILTER WAKTU TAP ===
+                $timeFilterText = 'Semua Waktu';
+                if ($this->tapTimeCategory == 'pagi') {
+                    $timeFilterText = 'Pagi (01:00 - 11:59)';
+                } elseif ($this->tapTimeCategory == 'siang') {
+                    $timeFilterText = 'Siang (12:00 - 14:59)';
+                } elseif ($this->tapTimeCategory == 'sore') {
+                    $timeFilterText = 'Sore (15:00 - 18:00)';
+                }
+                $sheet->setCellValue('A' . ($footerRow + 2), 'Filter Waktu: ' . $timeFilterText);
+                // === AKHIR PENAMBAHAN INFO ===
+
+                
                 // Total Member
-                $sheet->setCellValue('A' . ($footerRow + 3), 'TOTAL MEMBER:');
-                $sheet->setCellValue('A' . ($footerRow + 4), '• Total Member: ' . $this->totalMembers . ' orang');
-                $sheet->setCellValue('A' . ($footerRow + 5), '• Member dengan Kartu RFID: ' . $this->membersWithCard . ' orang');
-                $sheet->setCellValue('A' . ($footerRow + 6), '• Member tanpa Kartu RFID: ' . $this->membersWithoutCard . ' orang');
+                $sheet->setCellValue('A' . ($footerRow + 4), 'TOTAL MEMBER:');
+                $sheet->setCellValue('A' . ($footerRow + 5), '• Total Member: ' . $this->totalMembers . ' orang');
+                $sheet->setCellValue('A' . ($footerRow + 6), '• Member dengan Kartu RFID: ' . $this->membersWithCard . ' orang');
+                $sheet->setCellValue('A' . ($footerRow + 7), '• Member tanpa Kartu RFID: ' . $this->membersWithoutCard . ' orang');
                 
                 // Statistik Kehadiran
-                $sheet->setCellValue('A' . ($footerRow + 8), 'STATISTIK KEHADIRAN:');
-                $sheet->setCellValue('A' . ($footerRow + 9), '• Member Aktif (hadir): ' . $this->activeMembers . ' orang');
-                $sheet->setCellValue('A' . ($footerRow + 10), '• Member Tidak Aktif(tidak hadir) : ' . $this->inactiveMembers . ' orang');
+                $sheet->setCellValue('A' . ($footerRow + 9), 'STATISTIK KEHADIRAN:');
+                $sheet->setCellValue('A' . ($footerRow + 10), '• Member Aktif (hadir): ' . $this->activeMembers . ' orang');
+                $sheet->setCellValue('A' . ($footerRow + 11), '• Member Tidak Aktif (tidak hadir) : ' . $this->inactiveMembers . ' orang');
 
                 
                 // Total dan Rata-rata Kehadiran
-                $sheet->setCellValue('A' . ($footerRow + 12), 'TOTAL KEHADIRAN:');
-                $sheet->setCellValue('A' . ($footerRow + 13), '• Total Seluruh Kehadiran: ' . $this->totalAttendance . ' kali');
+                $sheet->setCellValue('A' . ($footerRow + 13), 'TOTAL KEHADIRAN:');
+                $sheet->setCellValue('A' . ($footerRow + 14), '• Total Seluruh Kehadiran: ' . $this->totalAttendance . ' kali');
                 
                 $avgAttendance = $this->totalMembers > 0 ? round($this->totalAttendance / $this->totalMembers, 2) : 0;
-                $sheet->setCellValue('A' . ($footerRow + 14), '• Rata-rata per Member: ' . $avgAttendance . ' kali');
+                $sheet->setCellValue('A' . ($footerRow + 15), '• Rata-rata per Member: ' . $avgAttendance . ' kali');
                 
                 // Persentase
                 $activePercentage = $this->totalMembers > 0 ? round(($this->activeMembers / $this->totalMembers) * 100, 1) : 0;
                 $cardPercentage = $this->totalMembers > 0 ? round(($this->membersWithCard / $this->totalMembers) * 100, 1) : 0;
                 
-                $sheet->setCellValue('A' . ($footerRow + 16), 'PERSENTASE:');
-                $sheet->setCellValue('A' . ($footerRow + 17), '• Tingkat Keaktifan: ' . $activePercentage . '%');
-                $sheet->setCellValue('A' . ($footerRow + 18), '• Member ber-Kartu: ' . $cardPercentage . '%');
+                $sheet->setCellValue('A' . ($footerRow + 17), 'PERSENTASE:');
+                $sheet->setCellValue('A' . ($footerRow + 18), '• Tingkat Keaktifan: ' . $activePercentage . '%');
+                $sheet->setCellValue('A' . ($footerRow + 19), '• Member ber-Kartu: ' . $cardPercentage . '%');
                 
                 // Tanggal Export
-                $sheet->setCellValue('A' . ($footerRow + 20), 'Tanggal Export: ' . Carbon::now()->format('d/m/Y H:i:s'));
+                $sheet->setCellValue('A' . ($footerRow + 21), 'Tanggal Export: ' . Carbon::now()->format('d/m/Y H:i:s'));
                 
                 // Style untuk header statistik
                 $sheet->getStyle('A' . $footerRow)->applyFromArray([
@@ -356,7 +387,7 @@ class AttendanceReportExport implements FromCollection, WithHeadings, WithMappin
                 ]);
                 
                 // Style untuk sub-header (TOTAL MEMBER, STATISTIK KEHADIRAN, dll)
-                $subHeaders = [$footerRow + 3, $footerRow + 8, $footerRow + 13, $footerRow + 17];
+                $subHeaders = [$footerRow + 4, $footerRow + 9, $footerRow + 13, $footerRow + 17];
                 foreach ($subHeaders as $row) {
                     $sheet->getStyle('A' . $row)->applyFromArray([
                         'font' => [
@@ -368,7 +399,7 @@ class AttendanceReportExport implements FromCollection, WithHeadings, WithMappin
                 }
                 
                 // Style untuk detail items dan tanggal export
-                $detailRows = range($footerRow + 1, $footerRow + 21);
+                $detailRows = range($footerRow + 1, $footerRow + 22); // Disesuaikan rangenya
                 foreach ($detailRows as $row) {
                     if (!in_array($row, array_merge([$footerRow], $subHeaders))) {
                         $sheet->getStyle('A' . $row)->applyFromArray([

@@ -23,9 +23,13 @@ class TapValidationController extends Controller
         $card = MasterCard::with('member.accessRule', 'coach.accessRule', 'staff.accessRule')
             ->where('cardno', $cardno)->first();
 
+        // --- Blok 1: Kartu Tidak Ditemukan ---
         if (!$card || $card->assignment_status == 'available') {
             TapLog::create([
-                'master_card_id' => $card->id ?? null,
+                // === PERBAIKAN BUG ===
+                // Menggunakan null-safe operator (?->) untuk mencegah error
+                // jika $card null tapi kita mencoba mengambil $card->id
+                'master_card_id' => $card?->id, 
                 'card_uid' => $cardno, // Simpan UID yang di-scan
                 'status' => 0,
                 'message' => 'Kartu tdk terdftr',
@@ -34,6 +38,51 @@ class TapValidationController extends Controller
             return response()->json(['Status' => 0, 'Message' => 'Krtu tdk terdftr',  'FullName' => 'Nama tidak terdaftar',  'Cardno' => $cardno, 'UTC' => $now->format('d-m-Y H:i:s')], 404);
         }
 
+        // ================================================
+        // === LOGIKA ANTI-DOUBLE TAP (DEBOUNCE) DIMULAI ===
+        // ================================================
+        // Cek log terakhir (apapun statusnya) untuk kartu ini
+        $lastTap = TapLog::where('master_card_id', $card->id)
+                        ->latest('tapped_at')
+                        ->first();
+        
+        // Setel durasi debounce (3 detik)
+        $debounceSeconds = 3; 
+
+        if ($lastTap && $lastTap->tapped_at->diffInSeconds($now) < $debounceSeconds) {
+            // Ini adalah tap duplikat.
+            // Jangan buat log baru, kirim saja respons yang SAMA dengan log terakhir
+            // agar mesin tapping "puas" dan tidak mengirim request lagi.
+            
+            // Ambil nama pemilik untuk respons
+            $ownerName = $card->member?->name ?? $card->coach?->name ?? $card->staff?->name ?? 'Pengguna';
+
+            if ($lastTap->status == 1) { 
+                // Jika tap terakhir BERHASIL, kirim ulang respons BERHASIL
+                return response()->json([
+                    'Status' => 1, 
+                    'Message' => 'Akses Diberikan', 
+                    'FullName' => $ownerName, 
+                    'Cardno' => $cardno,
+                    'UTC' => $now->format('d-m-Y H:i:s')
+                ], 200);
+            } else {
+                // Jika tap terakhir GAGAL, kirim ulang respons GAGAL
+                return response()->json([
+                    'Status' => 0, 
+                    'Message' => $lastTap->message, // Gunakan pesan error dari log terakhir
+                    'FullName' => $ownerName,
+                    'Cardno' => $cardno, 
+                    'UTC' => $now->format('d-m-Y H:i:s')
+                ], 403); // 403 (Forbidden) atau 429 (Too Many Req)
+            }
+        }
+        // ================================================
+        // ===       LOGIKA DEBOUNCE SELESAI          ===
+        // ================================================
+
+        // --- Blok 2: Pemilik Kartu Tidak Ditemukan ---
+        // Kode di bawah ini HANYA akan berjalan jika ini BUKAN tap duplikat
         $owner = $card->member ?? $card->coach ?? $card->staff;
 
         if (!$owner) {
@@ -53,6 +102,7 @@ class TapValidationController extends Controller
             return response()->json(['Status' => 1, 'Message' => 'Akses Diberikan', 'FullName' => $owner->name, 'Cardno' => $cardno, 'UTC' => $now->format('d-m-Y H:i:s')]);
         }
 
+        // --- Blok 3: Validasi Aturan (Hari, Jam, Kuota) ---
         $today = strtolower($now->format('l'));
         $currentTime = $now->format('H:i:s');
         $startTime = $rule->start_time ? Carbon::parse($rule->start_time)->format('H:i:s') : null;
@@ -94,6 +144,7 @@ class TapValidationController extends Controller
             }
         }
 
+        // --- Blok 4: Akses Diberikan (Sukses) ---
         TapLog::create(['master_card_id' => $card->id, 'card_uid' => $cardno, 'status' => 1, 'message' => 'Akses diberikan.', 'tapped_at' => $now]);
         return response()->json([
             'Status' => 1, 

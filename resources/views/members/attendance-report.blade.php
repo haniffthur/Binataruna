@@ -46,7 +46,6 @@
                         <legend class="step-legend mb-3">
                             <span class="step-number">1</span> Pilih Periode Laporan
                         </legend>
-
                         <div class="p-3 rounded bg-light border mb-3">
                             <label class="font-weight-bold text-dark small">Pilih Cepat:</label>
                             <div class="btn-toolbar" role="toolbar">
@@ -60,16 +59,15 @@
                                 </div>
                             </div>
                         </div>
-
                         <div class="row">
                             <div class="col-md-6 form-group">
                                 <label for="start_date">Atau pilih manual tanggal mulai:</label>
-                                <input type="date" name="start_date" id="start_date" class="form-control" 
+                                <input type="date" name="start_date" id="start_date" class="form-control"
                                        value="{{ request('start_date', $defaultStartDate) }}" required>
                             </div>
                             <div class="col-md-6 form-group">
                                 <label for="end_date">Hingga tanggal selesai:</label>
-                                <input type="date" name="end_date" id="end_date" class="form-control" 
+                                <input type="date" name="end_date" id="end_date" class="form-control"
                                        value="{{ request('end_date', $defaultEndDate) }}" required>
                             </div>
                         </div>
@@ -82,6 +80,7 @@
                         <legend class="step-legend mb-3">
                             <span class="step-number" style="background-color: #4e73df;">2</span> Terapkan Filter (Opsional)
                         </legend>
+                        {{-- Baris Pertama Filter --}}
                         <div class="row">
                             <div class="col-md-6 form-group">
                                 <label for="school_class_id">Filter berdasarkan Kelas</label>
@@ -106,10 +105,24 @@
                                 </select>
                             </div>
                         </div>
+                        {{-- Baris Kedua Filter (Tambahan untuk Waktu Tap) --}}
+                        <div class="row">
+                            <div class="col-md-6 form-group"> {{-- Gunakan col-md-6 agar lebarnya sama --}}
+                                <label for="tap_time_category">Filter Waktu Tap</label>
+                                <select name="tap_time_category" id="tap_time_category" class="form-control">
+                                    <option value="">-- Semua Waktu --</option>
+                                    <option value="pagi">Pagi (01:00 - 11:59)</option>
+                                    <option value="siang">Siang (12:00 - 14:59)</option>
+                                    <option value="sore">Sore (15:00 - 18:00)</option>
+                                </select>
+                            </div>
+                            {{-- Kosongkan kolom sebelahnya jika hanya ada 1 filter di baris ini --}}
+                            <div class="col-md-6"></div>
+                        </div>
                     </fieldset>
 
                 </div>
-                
+
                 <div class="card-footer text-right">
                     <a href="{{ route('members.attendance-report') }}" class="btn btn-secondary">
                         <i class="fas fa-sync-alt mr-1"></i>Reset Filter
@@ -167,10 +180,21 @@
 
     // --- KODE JQUERY SAAT HALAMAN SIAP ---
     $(document).ready(function() {
-        // Inisialisasi Select2 untuk filter member
+        // Inisialisasi Select2 untuk filter member (seperti sebelumnya)
         $('#member_id_select').select2({
             theme: 'bootstrap4',
             placeholder: 'Cari dan pilih member'
+        });
+
+        // Inisialisasi Select2 untuk filter kelas (agar tampilan konsisten)
+         $('#school_class_id').select2({
+            theme: 'bootstrap4'
+        });
+
+        // Inisialisasi Select2 untuk filter WAKTU TAP (agar tampilan konsisten)
+         $('#tap_time_category').select2({
+            theme: 'bootstrap4',
+             minimumResultsForSearch: Infinity // Sembunyikan box pencarian karena opsinya sedikit
         });
     });
 </script>

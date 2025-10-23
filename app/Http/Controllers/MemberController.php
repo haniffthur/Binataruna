@@ -717,8 +717,10 @@ class MemberController extends Controller
             $request->validate([
                 'start_date' => 'required|date',
                 'end_date' => 'required|date|after_or_equal:start_date',
-                'school_class_id' => 'nullable|exists:school_classes,id', // Sesuaikan nama tabel jika perlu
-                'member_id' => 'nullable|exists:members,id' // DIUBAH: dari 'name' ke 'member_id'
+                'school_class_id' => 'nullable|exists:school_classes,id',
+                'member_id' => 'nullable|exists:members,id',
+                // === TAMBAHKAN VALIDASI INI ===
+                'tap_time_category' => 'nullable|string|in:pagi,siang,sore' 
             ]);
 
             // Siapkan filter yang sudah disesuaikan
@@ -726,7 +728,9 @@ class MemberController extends Controller
                 'start_date' => $request->start_date,
                 'end_date' => $request->end_date,
                 'school_class_id' => $request->school_class_id,
-                'member_id' => $request->member_id // DIUBAH: dari 'name' ke 'member_id'
+                'member_id' => $request->member_id,
+                // === TAMBAHKAN FILTER INI ===
+                'tap_time_category' => $request->tap_time_category 
             ];
 
             // Generate nama file
