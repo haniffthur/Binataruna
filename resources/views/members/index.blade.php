@@ -171,7 +171,7 @@
                         <tr>
                             <th>#</th>
                             <th>Nama Lengkap</th>
-                         
+                         <th>Status</th>
                             <th>Kelas</th>
                             <th>Kartu RFID</th>
                             <th>Aturan Akses</th>
@@ -204,12 +204,32 @@
                                     @endif
                                     {{ $member->name }}
                                 </td>
-                                
+                                <td>
+                @if ($member->is_active)
+                    <span class="badge badge-success">Aktif</span>
+                @else
+                    <span class="badge badge-danger">Nonaktif (Cuti)</span>
+                @endif
+            </td>
                                 <td>{{ $member->schoolClass->name ?? '-' }}</td>
                                 <td><span class="badge badge-info">{{ $member->masterCard->cardno ?? 'Belum ada' }}</span></td>
                                 <td>{{ $member->rule_type == 'custom' ? 'Custom' : ($member->accessRule->name ?? 'Default') }}</td>
                                 <td>{{ \Carbon\Carbon::parse($member->join_date)->format('d M Y') }}</td>
                                 <td>
+                                    <form action="{{ route('members.toggle-status', $member->id) }}" method="POST" class="d-inline" onsubmit="return confirm('Anda yakin ingin mengubah status member ini?');">
+                    @csrf
+                    @if ($member->is_active)
+                        {{-- Tombol untuk Nonaktifkan (buat jadi Cuti) --}}
+                        <button type.button" class="btn btn-warning btn-sm" data-toggle="tooltip" title="Nonaktifkan (Cuti)">
+                            <i class="fas fa-pause"></i>
+                        </button>
+                    @else
+                        {{-- Tombol untuk Aktifkan --}}
+                        <button type.button" class="btn btn-success btn-sm" data-toggle="tooltip" title="Aktifkan Kembali">
+                            <i class="fas fa-play"></i>
+                        </button>
+                    @endif
+                </form>
                                     <a href="{{ route('members.show', $member->id) }}" class="btn btn-info btn-sm" title="Detail"><i class="fas fa-eye"></i></a>
                                     <a href="{{ route('members.edit', $member->id) }}" class="btn btn-warning btn-sm" title="Edit"><i class="fas fa-edit"></i></a>
                                     <form action="{{ route('members.destroy', $member->id) }}" method="POST" class="d-inline" onsubmit="return confirm('Yakin ingin hapus member ini?')">

@@ -7,6 +7,11 @@ class SchoolClass extends Model {
     use HasFactory;
     
     protected $table = 'classes'; // Penting: Menentukan nama tabel secara eksplisit
-    protected $fillable = ['name', 'description', 'price'];
+    protected $fillable = ['name', 'description', 'price','access_rule_id'];
+
+    public function accessRule()
+{
+    return $this->belongsTo(AccessRule::class);
+}
    
 }

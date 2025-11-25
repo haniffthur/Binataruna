@@ -1,8 +1,4 @@
 <?php
-// =====================================
-// FILE 2: TAP VALIDATION CONTROLLER
-// Path: app/Http/Controllers/Api/TapValidationController.php
-// =====================================
 
 namespace App\Http\Controllers\Api;
 
@@ -14,23 +10,31 @@ use Carbon\Carbon;
 
 class TapValidationController extends Controller
 {
+    /**
+     * Memvalidasi tap dari mesin RFID.
+     * * Urutan Pengecekan:
+     * 1. Kartu Terdaftar?
+     * 2. Apakah ini Tap Duplikat (Debounce)?
+     * 3. Pemilik Kartu Ditemukan?
+     * 4. Apakah Akun Member Aktif (Tidak Cuti)?
+     * 5. Validasi Aturan (Hari, Jam, Kuota)?
+     * 6. Akses Diberikan.
+     */
     public function validateTap(Request $request)
     {
+        // Validasi input awal
         $validatedData = $request->validate(['cardno' => 'required|string']);
         $now = Carbon::now();
         $cardno = $validatedData['cardno'];
 
+        // --- 1. Pengecekan Kartu Terdaftar ---
         $card = MasterCard::with('member.accessRule', 'coach.accessRule', 'staff.accessRule')
             ->where('cardno', $cardno)->first();
 
-        // --- Blok 1: Kartu Tidak Ditemukan ---
         if (!$card || $card->assignment_status == 'available') {
             TapLog::create([
-                // === PERBAIKAN BUG ===
-                // Menggunakan null-safe operator (?->) untuk mencegah error
-                // jika $card null tapi kita mencoba mengambil $card->id
-                'master_card_id' => $card?->id, 
-                'card_uid' => $cardno, // Simpan UID yang di-scan
+                'master_card_id' => $card?->id, // Menggunakan null-safe operator jika $card null
+                'card_uid' => $cardno,
                 'status' => 0,
                 'message' => 'Kartu tdk terdftr',
                 'tapped_at' => $now
@@ -38,23 +42,18 @@ class TapValidationController extends Controller
             return response()->json(['Status' => 0, 'Message' => 'Krtu tdk terdftr',  'FullName' => 'Nama tidak terdaftar',  'Cardno' => $cardno, 'UTC' => $now->format('d-m-Y H:i:s')], 404);
         }
 
-        // ================================================
-        // === LOGIKA ANTI-DOUBLE TAP (DEBOUNCE) DIMULAI ===
-        // ================================================
+        // --- 2. Pengecekan Anti-Double Tap (Debounce) ---
         // Cek log terakhir (apapun statusnya) untuk kartu ini
         $lastTap = TapLog::where('master_card_id', $card->id)
                         ->latest('tapped_at')
                         ->first();
         
-        // Setel durasi debounce (3 detik)
-        $debounceSeconds = 3; 
+        $debounceSeconds = 3; // Blokir tap duplikat dalam 3 detik
 
         if ($lastTap && $lastTap->tapped_at->diffInSeconds($now) < $debounceSeconds) {
             // Ini adalah tap duplikat.
             // Jangan buat log baru, kirim saja respons yang SAMA dengan log terakhir
             // agar mesin tapping "puas" dan tidak mengirim request lagi.
-            
-            // Ambil nama pemilik untuk respons
             $ownerName = $card->member?->name ?? $card->coach?->name ?? $card->staff?->name ?? 'Pengguna';
 
             if ($lastTap->status == 1) { 
@@ -74,14 +73,11 @@ class TapValidationController extends Controller
                     'FullName' => $ownerName,
                     'Cardno' => $cardno, 
                     'UTC' => $now->format('d-m-Y H:i:s')
-                ], 403); // 403 (Forbidden) atau 429 (Too Many Req)
+                ], 403); 
             }
         }
-        // ================================================
-        // ===       LOGIKA DEBOUNCE SELESAI          ===
-        // ================================================
-
-        // --- Blok 2: Pemilik Kartu Tidak Ditemukan ---
+        
+        // --- 3. Pengecekan Pemilik Kartu ---
         // Kode di bawah ini HANYA akan berjalan jika ini BUKAN tap duplikat
         $owner = $card->member ?? $card->coach ?? $card->staff;
 
@@ -90,6 +86,29 @@ class TapValidationController extends Controller
             return response()->json(['Status' => 0, 'Message' => 'Pemilik kartu tidak ditemukan.', 'Cardno' => $cardno, 'UTC' => $now->format('d-m-Y H:i:s')], 404);
         }
 
+        // --- 4. Pengecekan Status Aktif/Cuti (Hanya untuk Member) ---
+        if ($card->member) { 
+            // Jika 'is_active' bernilai false (0)
+            if ($owner->is_active == false) {
+                $message = 'Akses ditolak: Akun tdk aktif (Cuti).';
+                TapLog::create([
+                    'master_card_id' => $card->id,
+                    'card_uid' => $cardno,
+                    'status' => 0, // Gagal
+                    'message' => $message,
+                    'tapped_at' => $now
+                ]);
+                return response()->json([
+                    'Status' => 0, 
+                    'Message' => 'Krtu tdk aktif', 
+                    'FullName' => $owner->name,
+                    'Cardno' => $cardno, 
+                    'UTC' => $now->format('d-m-Y H:i:s')
+                ], 403); // 403 = Forbidden (Dilarang)
+            }
+        }
+
+        // --- 5. Validasi Aturan (Hari, Jam, Kuota) ---
         $rule = null;
         if (isset($owner->rule_type) && $owner->rule_type == 'custom') {
             $rule = $owner;
@@ -97,22 +116,24 @@ class TapValidationController extends Controller
             $rule = $owner->accessRule;
         }
 
+        // Jika tidak ada aturan, langsung berikan akses
         if (!$rule) {
             TapLog::create(['master_card_id' => $card->id, 'card_uid' => $cardno, 'status' => 1, 'message' => 'Akses diberikan (tanpa aturan).', 'tapped_at' => $now]);
             return response()->json(['Status' => 1, 'Message' => 'Akses Diberikan', 'FullName' => $owner->name, 'Cardno' => $cardno, 'UTC' => $now->format('d-m-Y H:i:s')]);
         }
 
-        // --- Blok 3: Validasi Aturan (Hari, Jam, Kuota) ---
+        // Validasi Hari
         $today = strtolower($now->format('l'));
-        $currentTime = $now->format('H:i:s');
-        $startTime = $rule->start_time ? Carbon::parse($rule->start_time)->format('H:i:s') : null;
-        $endTime = $rule->end_time ? Carbon::parse($rule->end_time)->format('H:i:s') : null;
-
         if ($rule->allowed_days && !in_array($today, $rule->allowed_days)) {
             $message = 'Akses ditolak: Bukan hari yang diizinkan.';
             TapLog::create(['master_card_id' => $card->id, 'card_uid' => $cardno, 'status' => 0, 'message' => $message, 'tapped_at' => $now]);
             return response()->json(['Status' => 0, 'Message' => $message, 'Cardno' => $cardno, 'UTC' => $now->format('d-m-Y H:i:s')], 403);
         }
+
+        // Validasi Jam
+        $currentTime = $now->format('H:i:s');
+        $startTime = $rule->start_time ? Carbon::parse($rule->start_time)->format('H:i:s') : null;
+        $endTime = $rule->end_time ? Carbon::parse($rule->end_time)->format('H:i:s') : null;
 
         if (($startTime && $currentTime < $startTime) || ($endTime && $currentTime > $endTime)) {
             $message = 'Akses ditolak: Di luar jam operasional.';
@@ -120,6 +141,7 @@ class TapValidationController extends Controller
             return response()->json(['Status' => 0, 'Message' => $message, 'Cardno' => $cardno, 'UTC' => $now->format('d-m-Y H:i:s')], 403);
         }
 
+        // Validasi Limit Harian
         if ($rule->max_taps_per_day !== null && $rule->max_taps_per_day >= 0) {
             $dailyQuery = TapLog::where('master_card_id', $card->id)->whereDate('tapped_at', $now->toDateString())->where('status', 1);
             if ($owner->daily_tap_reset_at) {
@@ -132,6 +154,7 @@ class TapValidationController extends Controller
             }
         }
 
+        // Validasi Limit Bulanan
         if ($rule->max_taps_per_month !== null && $rule->max_taps_per_month >= 0) {
             $monthlyQuery = TapLog::where('master_card_id', $card->id)->whereMonth('tapped_at', $now->month)->whereYear('tapped_at', $now->year)->where('status', 1);
             if ($owner->monthly_tap_reset_at) {
@@ -144,7 +167,7 @@ class TapValidationController extends Controller
             }
         }
 
-        // --- Blok 4: Akses Diberikan (Sukses) ---
+        // --- 6. Akses Diberikan (Sukses) ---
         TapLog::create(['master_card_id' => $card->id, 'card_uid' => $cardno, 'status' => 1, 'message' => 'Akses diberikan.', 'tapped_at' => $now]);
         return response()->json([
             'Status' => 1, 

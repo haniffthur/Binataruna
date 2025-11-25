@@ -17,6 +17,7 @@ class Member extends Model
         'access_rule_id',
         'school_class_id', // Pastikan ini juga ada jika sebelumnya belum ada
         'name',
+        'is_active',
         'nickname', // <-- Kolom Baru
         'nis',      // <-- Kolom Baru
         'nisnas',   // <-- Kolom Baru
@@ -37,6 +38,7 @@ class Member extends Model
     ];
 
     protected $casts = [
+        'is_active' => 'boolean',
         'allowed_days' => 'array',
         'start_time' => 'datetime:H:i:s',
         'end_time' => 'datetime:H:i:s',

@@ -14,7 +14,10 @@
                 <img class="img-profile rounded-circle" src="{{ asset('img/undraw_profile.svg') }}" width="32" height="32">
             </a>
             <div class="dropdown-menu dropdown-menu-right shadow-sm border-0" aria-labelledby="userDropdown">
-                <a class="dropdown-item" href="#"><i class="fas fa-user fa-sm fa-fw mr-2 text-muted"></i> Profile</a>
+             <a class="dropdown-item" href="{{ route('profile.edit') }}">
+            <i class="fas fa-user fa-sm fa-fw mr-2 text-gray-400"></i>
+            Profile
+        </a>
                 <a class="dropdown-item" href="#"><i class="fas fa-cogs fa-sm fa-fw mr-2 text-muted"></i> Settings</a>
                 <div class="dropdown-divider"></div>
                 <a class="dropdown-item text-danger" href="{{ route('logout') }}"><i class="fas fa-sign-out-alt fa-sm fa-fw mr-2"></i> Logout</a>

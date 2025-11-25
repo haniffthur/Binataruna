@@ -154,4 +154,5 @@ class TaplogsController extends Controller
 
         return $query;
     }
+    
 }

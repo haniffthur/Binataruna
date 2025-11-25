@@ -40,8 +40,16 @@
                             <option value="this_week">Minggu Ini</option>
                             <option value="today">Hari Ini</option>
                             <option value="custom">Pilih Rentang</option>
+        
                         </select>
+                        
                     </div>
+                     <div id="custom-date-range" style="display: none;">
+                            <div class="row">
+                                <div class="col-md-6 form-group mb-md-0"><label for="start_date">Dari</label><input type="date" name="start_date" id="start_date" class="form-control" value="{{ now()->startOfMonth()->format('Y-m-d') }}"></div>
+                                <div class="col-md-6 form-group mb-md-0"><label for="end_date">Sampai</label><input type="date" name="end_date" id="end_date" class="form-control" value="{{ now()->format('Y-m-d') }}"></div>
+                            </div>
+                        </div>
                     <div class="col-md-3 form-group mb-md-0">
                         <label for="class_id">Filter Kelas</label>
                         <select name="class_id" id="class_id" class="form-control">
@@ -61,12 +69,12 @@
                         </select>
                     </div>
                     <div class="col-md-3"> {{-- Adjusted column for date range and button --}}
-                        <div id="custom-date-range" style="display: none;">
+                        <!-- <div id="custom-date-range" style="display: none;">
                             <div class="row">
                                 <div class="col-md-6 form-group mb-md-0"><label for="start_date">Dari</label><input type="date" name="start_date" id="start_date" class="form-control" value="{{ now()->startOfMonth()->format('Y-m-d') }}"></div>
                                 <div class="col-md-6 form-group mb-md-0"><label for="end_date">Sampai</label><input type="date" name="end_date" id="end_date" class="form-control" value="{{ now()->format('Y-m-d') }}"></div>
                             </div>
-                        </div>
+                        </div> -->
                         {{-- Adjusted button position if custom date range is visible --}}
                         <div class="d-grid mt-3 mt-md-0">
                             <button type="submit" class="btn btn-primary">Terapkan</button>

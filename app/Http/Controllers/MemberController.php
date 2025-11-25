@@ -26,6 +26,7 @@ use PhpOffice\PhpSpreadsheet\Comment; // Tambahkan ini
 use PhpOffice\PhpSpreadsheet\RichText\RichText; // Tambahkan ini
 use Illuminate\Support\Str; // <-- TAMBAHKAN INI
 use App\Exports\AttendanceReportExport;
+use App\Exports\MemberTapHistoryExport; 
 
 class MemberController extends Controller
 {
@@ -177,11 +178,45 @@ class MemberController extends Controller
     /**
      * Menampilkan detail spesifik member.
      */
-    public function show(Member $member)
+   public function show(Request $request, Member $member) // Tambahkan Request $request di sini
     {
         $member->load('masterCard', 'accessRule', 'schoolClass');
-        $rule = null;
+        
+        // ==========================================
+        // 1. LOGIKA FILTER RIWAYAT TAPPING (BARU)
+        // ==========================================
+        $logsQuery = TapLog::query();
 
+        // Hanya ambil log milik kartu member ini
+        if ($member->masterCard) {
+            $logsQuery->where('master_card_id', $member->masterCard->id);
+        } else {
+            // Jika tidak punya kartu, pastikan hasil query kosong
+            $logsQuery->whereRaw('1 = 0'); 
+        }
+
+        // Filter Tanggal (Dari input form)
+        if ($request->filled('start_date') && $request->filled('end_date')) {
+            $logsQuery->whereBetween('tapped_at', [
+                Carbon::parse($request->start_date)->startOfDay(),
+                Carbon::parse($request->end_date)->endOfDay()
+            ]);
+        }
+
+        // Filter Status (Berhasil/Gagal)
+        if ($request->filled('status') && $request->status !== 'all') {
+            $logsQuery->where('status', $request->status);
+        }
+
+        // Ambil data dengan pagination (10 per halaman) 
+        // withQueryString() penting agar filter tidak hilang saat klik halaman 2, 3, dst.
+        $tapLogs = $logsQuery->latest('tapped_at')->paginate(10)->withQueryString();
+
+
+        // ==========================================
+        // 2. LOGIKA SISA KUOTA TAP (LAMA)
+        // ==========================================
+        $rule = null;
         $tapsData = [
             'max_daily' => 'N/A',
             'used_daily' => 0,
@@ -201,7 +236,7 @@ class MemberController extends Controller
             $now = Carbon::now();
             $cardId = $member->masterCard->id;
 
-            // Penghitungan Tap Harian
+            // --- Penghitungan Tap Harian ---
             if ($rule->max_taps_per_day !== null && $rule->max_taps_per_day >= 0) {
                 $tapsData['max_daily'] = (int) $rule->max_taps_per_day;
 
@@ -220,7 +255,7 @@ class MemberController extends Controller
                 $tapsData['remaining_daily'] = 'Tak Terbatas';
             }
 
-            // Penghitungan Tap Bulanan
+            // --- Penghitungan Tap Bulanan ---
             if ($rule->max_taps_per_month !== null && $rule->max_taps_per_month >= 0) {
                 $tapsData['max_monthly'] = (int) $rule->max_taps_per_month;
 
@@ -241,7 +276,21 @@ class MemberController extends Controller
             }
         }
 
-        return view('members.show', compact('member', 'tapsData'));
+        // Kirim $tapLogs juga ke view
+        return view('members.show', compact('member', 'tapsData', 'tapLogs'));
+    }
+
+    /**
+     * Mencetak Log Member ke tampilan cetak (Print Friendly).
+     */
+   public function exportLog(Request $request, Member $member)
+    {
+        $filters = $request->only(['start_date', 'end_date', 'status']);
+        
+        $fileName = 'Riwayat_Tap_' . Str::slug($member->name) . '_' . date('Ymd_His') . '.xlsx';
+
+        // Kita kirim $member (object), bukan $member->id
+        return Excel::download(new MemberTapHistoryExport($member, $filters), $fileName);
     }
 
     /**
@@ -271,7 +320,7 @@ class MemberController extends Controller
             'nickname' => 'nullable|string|max:255',
             'nis' => 'nullable|string|max:255',
             'phone_number' => 'nullable|string|max:20',
-            'nickname' => 'nullable|string|max:255',
+    
             'parent_name' => 'nullable|string|max:255',
             'address' => 'nullable|string',
             'date_of_birth' => 'nullable|date',
@@ -303,34 +352,65 @@ class MemberController extends Controller
             $shouldResetDaily = false;
             $shouldResetMonthly = false;
 
-            // Alasan Reset 1: Tipe aturan berubah (misal: dari Custom ke Template)
-            if ($oldRuleType !== $newRuleType) {
-                $shouldResetDaily = true;
-                $shouldResetMonthly = true;
-            } else {
-                // Alasan Reset 2: Tipe tetap Template, tapi template-nya diganti
-                if ($newRuleType === 'template' && $member->access_rule_id != $request->access_rule_id) {
-                    $shouldResetDaily = true;
-                    $shouldResetMonthly = true;
-                }
-                // Alasan Reset 3: Tipe tetap Custom, tapi nilainya diubah
-                elseif ($newRuleType === 'custom') {
-                    if ($member->max_taps_per_day != $request->max_taps_per_day) {
-                        $shouldResetDaily = true;
-                    }
-                    if ($member->max_taps_per_month != $request->max_taps_per_month) {
-                        $shouldResetMonthly = true;
-                    }
-                }
+            // --- Logika Reset Harian (Kita samakan dengan bulanan) ---
+            
+            // 1. Dapatkan Batas Harian LAMA
+            $oldDailyLimit = null;
+            if ($oldRuleType === 'template' && $member->accessRule) {
+                $oldDailyLimit = $member->accessRule->max_taps_per_day;
+            } else { // 'custom'
+                $oldDailyLimit = $member->max_taps_per_day;
             }
 
+            // 2. Dapatkan Batas Harian BARU
+            $newDailyLimit = null;
+            if ($newRuleType === 'template') {
+                $newRule = \App\Models\AccessRule::find($request->access_rule_id);
+                if ($newRule) $newDailyLimit = $newRule->max_taps_per_day;
+            } else { // 'custom'
+                $newDailyLimit = $request->max_taps_per_day;
+            }
+
+            // 3. Bandingkan HANYA nilainya
+            if ($oldDailyLimit != $newDailyLimit) {
+                $shouldResetDaily = true;
+            }
+
+            // --- Logika Reset Bulanan (Cerdas) ---
+
+            // 1. Dapatkan Batas Bulanan LAMA
+            $oldMonthlyLimit = null;
+            if ($oldRuleType === 'template' && $member->accessRule) {
+                $oldMonthlyLimit = $member->accessRule->max_taps_per_month;
+            } else { // 'custom'
+                $oldMonthlyLimit = $member->max_taps_per_month;
+            }
+
+            // 2. Dapatkan Batas Bulanan BARU
+            $newMonthlyLimit = null;
+            if ($newRuleType === 'template') {
+                // Kita gunakan $newRule yang sudah diambil di atas
+                if (!isset($newRule)) { // Jika belum di-fetch, fetch sekarang
+                     $newRule = \App\Models\AccessRule::find($request->access_rule_id);
+                }
+                if ($newRule) $newMonthlyLimit = $newRule->max_taps_per_month;
+            } else { // 'custom'
+                $newMonthlyLimit = $request->max_taps_per_month;
+            }
+
+            // 3. Bandingkan HANYA nilainya
+            if ($oldMonthlyLimit != $newMonthlyLimit) {
+                $shouldResetMonthly = true;
+            }
+
+            // --- Eksekusi Reset ---
             if ($shouldResetDaily) {
                 $dataToUpdate['daily_tap_reset_at'] = now();
-                $resetMessages[] = 'Hitungan tap harian telah di-reset.';
+                $resetMessages[] = 'Hitungan tap harian telah di-reset (karena batas limit berubah).';
             }
             if ($shouldResetMonthly) {
                 $dataToUpdate['monthly_tap_reset_at'] = now();
-                $resetMessages[] = 'Hitungan tap bulanan telah di-reset.';
+                $resetMessages[] = 'Hitungan tap bulanan telah di-reset (karena batas limit berubah).';
             }
         }
         
@@ -401,6 +481,7 @@ class MemberController extends Controller
         return response()->json([
             'id' => $member->id,
             'name' => $member->name,
+            'school_class_id' => $member->school_class_id,
             'nickname' => $member->nickname,
             'nis' => $member->nis,
             'nisnas' => $member->nisnas,
@@ -772,5 +853,19 @@ class MemberController extends Controller
         'results' => $formattedMembers
     ]);
 }
+public function toggleStatus(Member $member)
+    {
+        // Logika "membalik" status
+        // Jika sedang true -> jadi false, jika false -> jadi true
+        $member->is_active = !$member->is_active;
+        $member->save();
+
+        // Siapkan pesan notifikasi
+        $message = $member->is_active ? 
+                   'Member "' . $member->name . '" berhasil diaktifkan kembali.' : 
+                   'Member "' . $member->name . '" telah dinonaktifkan (Cuti).';
+
+        return redirect()->back()->with('success', $message);
+    }
     
 }

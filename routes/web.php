@@ -16,6 +16,7 @@ use App\Http\Controllers\TaplogsController;
 use App\Http\Controllers\TicketScanLogController;
 use App\Http\Controllers\Api\MemberDetailController;
 use App\Http\Controllers\ManualAttendanceController;
+use App\Http\Controllers\ProfileController;
 
 /*
 |--------------------------------------------------------------------------
@@ -46,6 +47,11 @@ Route::middleware(['auth'])->group(function () {
     Route::resource('users', UserController::class);
     Route::resource('access-rules', AccessRuleController::class);
 
+
+     // RUTE EDIT PROFILE
+    Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
+    Route::put('/profile', [ProfileController::class, 'update'])->name('profile.update');
+
     // == MASTER DATA ==
     Route::resource('master-cards', MasterCardController::class);
     Route::resource('classes', SchoolClassController::class);
@@ -57,6 +63,9 @@ Route::middleware(['auth'])->group(function () {
         Route::post('/import', [MemberController::class, 'import'])->name('import');
         Route::get('/export-report', [MemberController::class, 'exportReport'])->name('export.report');
         Route::get('/{member}/download-photo', [MemberController::class, 'downloadPhoto'])->name('download.photo');
+        Route::post('/{member}/toggle-status', [MemberController::class, 'toggleStatus'])->name('toggle-status');
+        Route::get('/{member}/export-log', [MemberController::class, 'exportLog'])->name('export-log');
+      
         
         // --- Laporan Absensi ---
         Route::get('/attendance-report', [MemberController::class, 'attendanceReportForm'])->name('attendance-report');
@@ -87,6 +96,7 @@ Route::middleware(['auth'])->group(function () {
 
     // == LOGS ==
     Route::get('/tap-logs', [TaplogsController::class, 'index'])->name('tap-logs.index');
+    Route::get('/api/tap-logs/latest', [TapLogsController::class, 'fetchLatest'])->name('api.tap-logs.latest');
     Route::get('/tap-logs/export-excel', [TaplogsController::class, 'exportExcel'])->name('tap-logs.export.excel');
     Route::get('/ticket-scan-logs', [TicketScanLogController::class, 'index'])->name('ticket-scan-logs.index');
 

@@ -14,6 +14,8 @@ class MemberTransaction extends Model
     protected $fillable = [
         'member_id', 
         'total_amount', 
+        'registration_fee',
+        'notes',
         'amount_paid', 
         'change', 
         'transaction_date'
