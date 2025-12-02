@@ -292,7 +292,7 @@ class TransactionController extends Controller
             $successMessage = 'Transaksi berhasil disimpan.';
             if (!empty($resetMessages)) $successMessage .= ' ' . implode(' ', $resetMessages);
 
-            return redirect()->route('transactions.index')->with('success', $successMessage);
+            return redirect()->route('transactions.member.create')->with('success', $successMessage);
 
         } catch (ValidationException $e) {
             $members = Member::orderBy('name')->get();
