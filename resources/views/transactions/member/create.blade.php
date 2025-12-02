@@ -28,13 +28,14 @@
     <div class="d-sm-flex align-items-center justify-content-between mb-4">
         <h1 class="h3 mb-0 text-gray-800">@yield('title')</h1>
     </div>
+
     <div class="card shadow mb-4">
         <div class="card-header"><h6 class="m-0 font-weight-bold text-primary">Form Transaksi Member</h6></div>
         <div class="card-body">
             @if(session('error'))<div class="alert alert-danger">{{ session('error') }}</div>@endif
             @if ($errors->any())
                 <div class="alert alert-danger">
-                    <strong>Whoops!</strong> Terdapat beberapa masalah dengan input Anda.<br><br>
+                    <strong>Whoops!</strong> Terdapat masalah pada input Anda.<br>
                     <ul>@foreach ($errors->all() as $error)<li>{{ $error }}</li>@endforeach</ul>
                 </div>
             @endif
@@ -42,11 +43,10 @@
             <form action="{{ route('transactions.member.store') }}" method="POST" enctype="multipart/form-data">
                 @csrf
                 
-                {{-- 1. TANGGAL TRANSAKSI --}}
                 <div class="form-group row">
-                    <label for="transaction_date" class="col-sm-2 col-form-label font-weight-bold">Tanggal Transaksi</label>
+                    <label class="col-sm-2 col-form-label font-weight-bold">Tanggal Transaksi</label>
                     <div class="col-sm-4">
-                        <input type="date" name="transaction_date" id="transaction_date" class="form-control" value="{{ old('transaction_date', date('Y-m-d')) }}" required>
+                        <input type="date" name="transaction_date" class="form-control" value="{{ old('transaction_date', date('Y-m-d')) }}" required>
                     </div>
                 </div>
                 <hr>
@@ -63,10 +63,28 @@
                     </div>
                 </div>
 
-                {{-- Opsi untuk Member Lama --}}
+                {{-- MEMBER LAMA --}}
                 <div id="form_member_lama" style="{{ old('transaction_type', 'lama') == 'lama' ? '' : 'display: none;' }}">
+                    
+                    {{-- JENIS PEMBAYARAN --}}
+                    <div class="form-group bg-light p-3 border rounded mb-3">
+                        <label class="font-weight-bold mb-2">Jenis Pembayaran:</label>
+                        <div class="custom-control custom-radio mb-2">
+                            <input type="radio" id="payment_type_class" name="payment_type" class="custom-control-input" value="class" checked>
+                            <label class="custom-control-label text-success font-weight-bold" for="payment_type_class">
+                                <i class="fas fa-dumbbell mr-1"></i> Bayar Kelas / Latihan (Aktifkan Member)
+                            </label>
+                        </div>
+                        <div class="custom-control custom-radio">
+                            <input type="radio" id="payment_type_leave" name="payment_type" class="custom-control-input" value="leave">
+                            <label class="custom-control-label text-danger font-weight-bold" for="payment_type_leave">
+                                <i class="fas fa-pause-circle mr-1"></i> Bayar Cuti (Nonaktifkan Member)
+                            </label>
+                        </div>
+                    </div>
+
                     <div class="form-group">
-                        <label for="member_id">Pilih Member (Cari Nama)</label>
+                        <label>Pilih Member (Cari Nama)</label>
                         <select name="member_id" id="member_id" class="form-control" style="width: 100%;">
                             <option value="">-- Cari Nama Member --</option>
                             @foreach($members as $member)
@@ -89,19 +107,18 @@
                     </div>
                 </div>
 
-                {{-- Form untuk Member Baru --}}
+                {{-- MEMBER BARU --}}
                 <div id="form_member_baru" style="{{ old('transaction_type') == 'baru' ? '' : 'display: none;' }}">
                     @include('members.partials.form-fields', ['member' => new \App\Models\Member])
                 </div>
                 <hr>
 
-                {{-- Bagian Transaksi Inti --}}
                 <h6 class="font-weight-bold text-primary">Detail Pembayaran</h6>
                 
                 <div class="form-group">
-                    <label for="class_id">Pilih Kelas</label>
+                    <label>Pilih Produk / Kelas</label>
                     <select name="class_id" id="class_id" class="form-control" required>
-                        <option value="" data-price="0" data-rule-id="">-- Pilih Kelas --</option>
+                        <option value="" data-price="0" data-rule-id="">-- Pilih Kelas / Paket Cuti --</option>
                         @foreach($schoolClasses as $class)
                             <option value="{{ $class->id }}" 
                                     data-price="{{ $class->price }}" 
@@ -117,26 +134,24 @@
                 </div>
 
                 <div class="form-group" id="registration_fee_container" style="display: none;">
-                    <label for="registration_fee">Biaya Pendaftaran (Member Baru)</label>
+                    <label>Biaya Pendaftaran (Member Baru)</label>
                     <input type="number" id="registration_fee" name="registration_fee" class="form-control" value="{{ old('registration_fee', 0) }}" min="0">
-                    <small class="text-muted">Biaya administrasi awal.</small>
                 </div>
 
-                {{-- UPDATE: Hilangkan Kolom Kembalian --}}
                 <div class="row">
                     <div class="col-md-6 form-group">
                         <label>Total Tagihan (Bisa Diedit)</label>
                         <input type="number" name="custom_total_amount" id="total_price_input" class="form-control font-weight-bold" value="0">
                     </div>
                     <div class="col-md-6 form-group">
-                        <label for="amount_paid">Jumlah Bayar</label>
+                        <label>Jumlah Bayar</label>
                         <input type="number" id="amount_paid" name="amount_paid" class="form-control" required min="0" value="{{ old('amount_paid') }}">
                     </div>
                 </div>
 
                 <div class="form-group">
-                    <label for="notes">Keterangan / Catatan (Opsional)</label>
-                    <textarea name="notes" id="notes" rows="2" class="form-control" placeholder="Contoh: Lunas, Cicilan 1, Potongan Diskon, dll.">{{ old('notes') }}</textarea>
+                    <label>Keterangan / Catatan</label>
+                    <textarea name="notes" id="notes" rows="2" class="form-control">{{ old('notes') }}</textarea>
                 </div>
 
                 <button type="submit" class="btn btn-success btn-lg btn-block mt-4"><i class="fas fa-save mr-2"></i>Proses Transaksi</button>
@@ -148,10 +163,12 @@
 @push('scripts')
 <script>
     $(document).ready(function() {
-        // --- CACHE ELEMEN ---
+        // CACHE ELEMENTS
         const memberForm = $('#form_member_lama');
         const newMemberForm = $('#form_member_baru');
         const transactionTypeRadios = $('input[name="transaction_type"]');
+        const paymentTypeRadios = $('input[name="payment_type"]');
+        
         const memberSelect = $('#member_id');
         const detailSection = $('#member_details_section');
         const updateRuleSection = $('#update_access_rule_section');
@@ -162,14 +179,12 @@
         const registrationFeeInput = $('#registration_fee');
         const registrationFeeContainer = $('#registration_fee_container');
         const totalPriceInput = $('#total_price_input');
-        const amountPaidInput = $('#amount_paid');
-        // const changeDisplay = $('#change_display'); // HAPUS INI
         const ruleAutoMsg = $('#rule_auto_select_msg');
         
         const newMemberMasterCardSelect = $('#master_card_id_new'); 
         const newMemberAccessRuleSection = $('#access_rule_section_new_member'); 
 
-        // 1. INISIALISASI SELECT2
+        // 1. INIT SELECT2
         memberSelect.select2({
             theme: 'bootstrap4',
             placeholder: '-- Cari Nama Member --',
@@ -177,65 +192,100 @@
             width: '100%'
         });
 
-        // 2. FUNGSI TOGGLE FORM
+        // 2. TOGGLE MEMBER LAMA / BARU
         function toggleMemberForms(type) {
             if (type === 'lama') {
-                memberForm.show();
-                newMemberForm.hide();
+                memberForm.show(); newMemberForm.hide();
                 memberSelect.prop('disabled', false).prop('required', true);
                 newMemberForm.find(':input').prop('disabled', true);
                 registrationFeeContainer.slideUp();
                 registrationFeeInput.val(0); 
+                togglePaymentType(paymentTypeRadios.filter(':checked').val()); 
             } else { 
-                memberForm.hide();
-                detailSection.hide();
-                updateRuleSection.hide();
-                newMemberForm.show();
+                memberForm.hide(); detailSection.hide(); updateRuleSection.hide(); newMemberForm.show();
                 memberSelect.prop('disabled', true).prop('required', false).val('').trigger('change');
                 newMemberForm.find(':input').prop('disabled', false);
                 registrationFeeContainer.slideDown();
-                
                 if(newMemberMasterCardSelect.length) newMemberMasterCardSelect.trigger('change');
             }
             calculatePrice();
         }
 
-        // 3. FUNGSI HITUNG HARGA (TANPA KEMBALIAN)
+        // 3. TOGGLE PAYMENT TYPE (CLASS / CUTI)
+        function togglePaymentType(type) {
+            if (transactionTypeRadios.filter(':checked').val() === 'lama') {
+                if (type === 'leave') {
+                    updateRuleSection.hide(); 
+                    ruleAutoMsg.addClass('d-none');
+                    totalPriceInput.val(100000); 
+                } else {
+                    if (memberSelect.val()) updateRuleSection.show();
+                    calculatePrice();
+                }
+                if (type === 'leave') updateRulesCheckbox.prop('checked', false).trigger('change');
+            }
+        }
+
+        // 4. HITUNG HARGA
         function calculatePrice() {
+            if (transactionTypeRadios.filter(':checked').val() === 'lama' && paymentTypeRadios.filter(':checked').val() === 'leave') return;
+
             const selectedOption = classSelect.find('option:selected');
             const classPrice = parseFloat(selectedOption.data('price')) || 0;
             const regFee = parseFloat(registrationFeeInput.val()) || 0;
             
-            const calculatedTotal = classPrice + regFee;
-            
             if (document.activeElement !== totalPriceInput[0]) {
-                totalPriceInput.val(calculatedTotal);
+                totalPriceInput.val(classPrice + regFee);
             }
-
-            // HAPUS LOGIKA KEMBALIAN
         }
 
-        // 4. FUNGSI POPULATE FORM UPDATE RULES
+        // 5. AUTO-SELECT RULE
+        function updateAccessRuleBasedOnClass() {
+            if (transactionTypeRadios.filter(':checked').val() === 'lama' && paymentTypeRadios.filter(':checked').val() === 'leave') {
+                ruleAutoMsg.addClass('d-none'); return;
+            }
+
+            const selectedOption = classSelect.find('option:selected');
+            const ruleId = selectedOption.data('rule-id');
+            const trxType = transactionTypeRadios.filter(':checked').val();
+
+            if (ruleId) {
+                ruleAutoMsg.removeClass('d-none');
+                if (trxType === 'baru') {
+                    const ruleRadio = newMemberForm.find('input[name="rule_type"][value="template"]');
+                    const ruleSelect = newMemberForm.find('select[name="access_rule_id"]');
+                    if(ruleRadio.length) { ruleRadio.prop('checked', true).trigger('change'); ruleSelect.val(ruleId).trigger('change'); }
+                } else {
+                    if (!updateRulesCheckbox.is(':checked')) updateRulesCheckbox.prop('checked', true).trigger('change');
+                    setTimeout(() => {
+                        const ruleRadio = updateRulesForm.find('input[name="update_rule_type"][value="template"]');
+                        const ruleSelect = updateRulesForm.find('select[name="update_access_rule_id"]');
+                        if(ruleRadio.length) { ruleRadio.parent().click(); ruleSelect.val(ruleId).trigger('change'); }
+                    }, 300);
+                }
+            } else {
+                ruleAutoMsg.addClass('d-none');
+            }
+        }
+
+        // 6. POPULATE FORM
         function populateAndShowUpdateForm(data = {}) {
              data = data || {}; 
              const accessRulesData = {!! json_encode($accessRules) !!};
              let templateOptions = `<option value="">-- Akses Default --</option>`;
-             
              accessRulesData.forEach(rule => {
                 const isSelected = data.access_rule_id == rule.id ? 'selected' : '';
                 templateOptions += `<option value="${rule.id}" ${isSelected}>${rule.name}</option>`;
             });
-            
             const days = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'];
             let daysCheckboxes = '';
             const currentDays = data.allowed_days || []; 
-            
             days.forEach(day => {
                 const isChecked = currentDays.includes(day) ? 'checked' : '';
                 daysCheckboxes += `<div class="form-check form-check-inline mr-3"><input class="form-check-input" type="checkbox" name="update_allowed_days[]" value="${day}" ${isChecked}><label class="form-check-label text-capitalize">${day}</label></div>`;
             });
 
-            const isTemplate = (data.rule_type === 'template' || !data.rule_type) ? true : false;
+            const isTemplate = (data.rule_type === 'template' || !data.rule_type);
             const tplChecked = isTemplate ? 'checked' : '';
             const cstChecked = !isTemplate ? 'checked' : '';
             const activeTpl = isTemplate ? 'active' : '';
@@ -256,81 +306,40 @@
                     <div class="form-group"><label>Hari</label><div class="d-flex flex-wrap">${daysCheckboxes}</div></div>
                     <div class="row"><div class="col-md-6 form-group"><label>Jam Mulai</label><input type="time" name="update_start_time" class="form-control" value="${data.start_time || ''}"></div><div class="col-md-6 form-group"><label>Jam Selesai</label><input type="time" name="update_end_time" class="form-control" value="${data.end_time || ''}"></div></div>
                 </div>`;
-            
             updateRulesForm.html(formHtml).slideDown();
         }
 
-        // 5. FUNGSI AUTO-SELECT RULE
-        function updateAccessRuleBasedOnClass() {
-            const selectedOption = classSelect.find('option:selected');
-            const ruleId = selectedOption.data('rule-id');
-            const trxType = transactionTypeRadios.filter(':checked').val();
-
-            if (ruleId) {
-                ruleAutoMsg.removeClass('d-none');
-                
-                if (trxType === 'baru') {
-                    const ruleRadio = newMemberForm.find('input[name="rule_type"][value="template"]');
-                    const ruleSelect = newMemberForm.find('select[name="access_rule_id"]');
-                    if(ruleRadio.length) {
-                        ruleRadio.prop('checked', true).trigger('change');
-                        ruleSelect.val(ruleId).trigger('change');
-                    }
-                } else {
-                    if (!updateRulesCheckbox.is(':checked')) {
-                        updateRulesCheckbox.prop('checked', true).trigger('change');
-                    }
-                    setTimeout(() => {
-                        const ruleRadio = updateRulesForm.find('input[name="update_rule_type"][value="template"]');
-                        const ruleSelect = updateRulesForm.find('select[name="update_access_rule_id"]');
-                        if(ruleRadio.length) {
-                            ruleRadio.parent().click(); 
-                            ruleSelect.val(ruleId).trigger('change');
-                        }
-                    }, 300);
-                }
-            } else {
-                ruleAutoMsg.addClass('d-none');
-            }
-        }
-        
         // --- EVENT LISTENERS ---
-        
         transactionTypeRadios.change(function() { toggleMemberForms($(this).val()); });
+        paymentTypeRadios.change(function() { togglePaymentType($(this).val()); });
 
-        classSelect.on('change', function() {
-            calculatePrice();
-            updateAccessRuleBasedOnClass();
-        });
-
+        classSelect.on('change', function() { calculatePrice(); updateAccessRuleBasedOnClass(); });
         registrationFeeInput.on('input', calculatePrice);
         totalPriceInput.on('input', calculatePrice);
-        amountPaidInput.on('input', calculatePrice);
 
         $(document).on('change', '#master_card_id_new', function() {
              const ruleSection = $(this).closest('form').find('#access_rule_section_new_member'); 
-             if ($(this).val()) {
-                 if(ruleSection.length) ruleSection.slideDown();
-             } else {
-                 if(ruleSection.length) ruleSection.slideUp();
-             }
+             if ($(this).val()) ruleSection.slideDown(); else ruleSection.slideUp();
         });
 
+        // SELECT MEMBER LAMA
         memberSelect.on('select2:select', function (e) {
             const memberId = e.params.data.id;
             if (!memberId) return;
 
             detailSection.html('<div class="card-body">Memuat data...</div>').slideDown();
-            updateRuleSection.show(); 
+            if (paymentTypeRadios.filter(':checked').val() !== 'leave') updateRuleSection.show(); 
             updateRulesCheckbox.prop('checked', false);
             updateRulesForm.hide().empty();
 
-            const url = `{{ url('/api/members') }}/${memberId}`;
+            // Menggunakan Anti-Cache URL
+            const url = `{{ url('/api/members') }}/${memberId}?t=${new Date().getTime()}`;
 
             fetch(url)
-                .then(response => response.json())
+                .then(res => res.json())
                 .then(data => {
-                    const memberDetailsHtml = `
+                    // --- SAYA HAPUS BAGIAN BADGE STATUS DI SINI AGAR TIDAK BIKIN PUSING ---
+                    detailSection.html(`
                         <div class="card-body">
                             <div class="row">
                                 <div class="col-md-3 text-center align-self-center">
@@ -343,48 +352,42 @@
                                     <p class="mb-0"><strong>Aturan Akses:</strong> <span>${data.access_rule}</span></p>
                                 </div>
                             </div>
-                        </div>`;
-                    
-                    detailSection.html(memberDetailsHtml);
+                        </div>
+                    `);
                     
                     if (data.school_class_id) {
-                        classSelect.val(data.school_class_id).trigger('change');
+                        classSelect.off('change'); 
+                        classSelect.val(data.school_class_id).trigger('change.select2'); 
+                        calculatePrice(); 
+                        classSelect.on('change', function() { calculatePrice(); updateAccessRuleBasedOnClass(); });
                     } else {
                         classSelect.val('').trigger('change');
                     }
-                    
                     updateRuleSection.data('rules', data);
+                })
+                .catch(err => {
+                    console.error(err);
+                    detailSection.html('<div class="card-body text-danger">Gagal memuat data.</div>');
                 });
         });
         
-        memberSelect.on('select2:clear', function (e) {
-             detailSection.slideUp();
-             updateRulesCheckbox.prop('checked', false);
-             updateRulesForm.hide().empty();
+        memberSelect.on('select2:clear', function () {
+             detailSection.slideUp(); updateRulesCheckbox.prop('checked', false); updateRulesForm.hide().empty();
         });
 
         updateRulesCheckbox.change(function() {
-            if ($(this).is(':checked')) {
-                const data = updateRuleSection.data('rules') || {};
-                populateAndShowUpdateForm(data);
-            } else {
-                updateRulesForm.slideUp().empty();
-            }
+            if ($(this).is(':checked')) populateAndShowUpdateForm(updateRuleSection.data('rules'));
+            else updateRulesForm.slideUp().empty();
         });
         
         $(document).on('change', 'input[name="update_rule_type"]', function() {
-            if($(this).val() === 'template') {
-                $('#form_template_rule_update').show();
-                $('#form_custom_rule_update').hide();
-            } else {
-                $('#form_template_rule_update').hide();
-                $('#form_custom_rule_update').show();
-            }
+            if($(this).val() === 'template') { $('#form_template_rule_update').show(); $('#form_custom_rule_update').hide(); }
+            else { $('#form_template_rule_update').hide(); $('#form_custom_rule_update').show(); }
         });
 
         const initialType = transactionTypeRadios.filter(':checked').val();
         toggleMemberForms(initialType);
-        calculatePrice();
+        togglePaymentType(paymentTypeRadios.filter(':checked').val());
     });
 </script>
 @endpush
