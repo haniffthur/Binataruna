@@ -11,11 +11,11 @@
             <h6 class="m-0 font-weight-bold text-primary"><i class="fas fa-filter mr-2"></i>Filter Transaksi</h6>
         </div>
         <div class="card-body">
-            <form action="{{ route('transactions.index') }}" method="GET">
+            {{-- PERBAIKAN: Tambahkan ID pada form --}}
+            <form action="{{ route('transactions.index') }}" method="GET" id="transaction-filter-form">
                 {{-- Simpan filter tipe yang sedang aktif --}}
                 <input type="hidden" name="type" value="{{ request('type', 'all') }}">
                 
-                {{-- PERBAIKAN UTAMA: Tata letak filter baru yang lebih rapi --}}
                 <div class="row">
                     <div class="col-md-4 form-group">
                         <label for="name">Nama Pelanggan</label>
@@ -46,8 +46,14 @@
                     <div class="col-md-8">
                         <div id="custom-date-range" style="{{ request('period') == 'custom' ? '' : 'display: none;' }}">
                             <div class="row">
-                                <div class="col-md-6 form-group mb-md-0"><label for="start_date">Dari Tanggal</label><input type="date" name="start_date" id="start_date" class="form-control" value="{{ request('start_date', now()->startOfMonth()->format('Y-m-d')) }}"></div>
-                                <div class="col-md-6 form-group mb-md-0"><label for="end_date">Sampai Tanggal</label><input type="date" name="end_date" id="end_date" class="form-control" value="{{ request('end_date', now()->format('Y-m-d')) }}"></div>
+                                <div class="col-md-6 form-group mb-md-0">
+                                    <label for="start_date">Dari Tanggal</label>
+                                    <input type="date" name="start_date" id="start_date" class="form-control" value="{{ request('start_date') }}">
+                                </div>
+                                <div class="col-md-6 form-group mb-md-0">
+                                    <label for="end_date">Sampai Tanggal</label>
+                                    <input type="date" name="end_date" id="end_date" class="form-control" value="{{ request('end_date') }}">
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -55,24 +61,27 @@
                         <a href="{{ route('transactions.index', ['type' => request('type', 'all')]) }}" class="btn btn-secondary mr-2">Reset</a>
                         <button type="submit" class="btn btn-primary mr-2">Terapkan</button>
                         
-                        {{-- TOMBOL EXPORT BARU --}}
                         <a href="{{ route('transactions.export.excel', request()->query()) }}" id="export-excel-btn" class="btn btn-success">
                             <i class="fas fa-file-excel"></i> Export
                         </a>
                     </div>
-                    
                 </div>
             </form>
         </div>
     </div>
 
+    {{-- Tabel Transaksi --}}
     <div class="card shadow mb-4">
         <div class="card-body">
             <ul class="nav nav-tabs" id="myTab" role="tablist">
-                <li class="nav-item" role="presentation"><a class="nav-link {{ request('type', 'all') == 'all' ? 'active' : '' }}" href="{{ route('transactions.index', array_merge(request()->except('type'), ['type' => 'all'])) }}">Semua Transaksi</a></li>
-                <li class="nav-item" role="presentation"><a class="nav-link {{ request('type') == 'member' ? 'active' : '' }}" href="{{ route('transactions.index', array_merge(request()->except('type'), ['type' => 'member'])) }}">Transaksi Member</a></li>
-                <!-- <li class="nav-item" role="presentation"><a class="nav-link {{ request('type') == 'non-member' ? 'active' : '' }}" href="{{ route('transactions.index', array_merge(request()->except('type'), ['type' => 'non-member'])) }}">Transaksi Non-Member</a></li> -->
+                <li class="nav-item" role="presentation">
+                    <a class="nav-link {{ request('type', 'all') == 'all' ? 'active' : '' }}" href="{{ route('transactions.index', array_merge(request()->except('type'), ['type' => 'all'])) }}">Semua Transaksi</a>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <a class="nav-link {{ request('type') == 'member' ? 'active' : '' }}" href="{{ route('transactions.index', array_merge(request()->except('type'), ['type' => 'member'])) }}">Transaksi Member</a>
+                </li>
             </ul>
+            
             <div class="tab-content mt-3" id="myTabContent">
                 <div class="tab-pane fade show active" role="tabpanel">
                     <div class="table-responsive">
@@ -104,18 +113,13 @@
                                         <td><strong>{{ $transaction->item_name ?? '-' }}</strong></td>
                                         <td>Rp {{ number_format($transaction->total_amount, 0, ',', '.') }}</td>
                                         <td>{{ \Carbon\Carbon::parse($transaction->transaction_date)->format('d M Y, H:i') }}</td>
-                                         <!-- <td>
-                                            @if($transaction->transaction_type == 'Non-Member')
-                                                {{-- PERBAIKAN PENTING DI SINI: Arahkan ke route 'non-member-receipt.show' --}}
-                                               <a href="{{ route('non-member-receipt.show', $transaction->id) }}" class="btn btn-info btn-sm">Struk</a>
-                                            @else
-                                                -
-                                            @endif
-                                        </td> -->
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="7" class="text-center">Tidak ada riwayat transaksi yang cocok dengan filter Anda.</td>
+                                        <td colspan="7" class="text-center py-3 text-muted">
+                                            <i class="fas fa-search mb-2" style="font-size: 20px;"></i><br>
+                                            Tidak ada riwayat transaksi yang cocok dengan filter Anda.
+                                        </td>
                                     </tr>
                                 @endforelse
                             </tbody>
@@ -135,24 +139,41 @@
     document.addEventListener("DOMContentLoaded", function() {
         const filterForm = document.getElementById('transaction-filter-form');
         const exportBtn = document.getElementById('export-excel-btn');
-        
-        // Fungsi untuk mengupdate URL tombol export
+        const periodSelect = document.getElementById('period');
+        const customDateRange = document.getElementById('custom-date-range');
+
+        // 1. Logic Export Excel URL
         function updateExportUrl() {
-            const formData = new FormData(filterForm);
-            const params = new URLSearchParams(formData).toString();
-            exportBtn.href = `{{ route('transactions.export.excel') }}?${params}`;
+            if(filterForm) {
+                const formData = new FormData(filterForm);
+                const params = new URLSearchParams(formData).toString();
+                if(exportBtn) exportBtn.href = `{{ route('transactions.export.excel') }}?${params}`;
+            }
         }
 
-        // Panggil fungsi setiap kali ada perubahan pada form filter
-        filterForm.addEventListener('change', updateExportUrl);
+        if (filterForm) {
+            filterForm.addEventListener('change', updateExportUrl);
+            updateExportUrl(); // Init awal
+        }
 
-        // Panggil sekali saat halaman dimuat untuk set URL awal
-        updateExportUrl();
+        // 2. Logic Tampilkan/Sembunyikan Input Tanggal
+        if (periodSelect && customDateRange) {
+            // Jalankan saat dropdown berubah
+            periodSelect.addEventListener('change', function() {
+                if (this.value === 'custom') {
+                    customDateRange.style.display = 'block';
+                } else {
+                    customDateRange.style.display = 'none';
+                }
+            });
 
-        // JavaScript untuk menampilkan/menyembunyikan rentang tanggal kustom
-        document.getElementById('period').addEventListener('change', function() {
-            document.getElementById('custom-date-range').style.display = (this.value === 'custom') ? 'block' : 'none';
-        });
+            // Jalankan saat halaman pertama kali dimuat (jika user sebelumnya pilih custom)
+            if (periodSelect.value === 'custom') {
+                customDateRange.style.display = 'block';
+            } else {
+                customDateRange.style.display = 'none';
+            }
+        }
     });
 </script>
 @endpush
