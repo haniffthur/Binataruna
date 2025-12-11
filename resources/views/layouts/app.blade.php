@@ -9,7 +9,7 @@
     <meta name="author" content="Bina Taruna">
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
-    <title>@yield('title', 'Dashboard') - Bina Taruna</title>
+    <title>@yield('title', 'Dashboard') - BinaTaruna</title>
 
     <!-- Custom fonts & styles -->
     <link href="{{ asset('vendor/fontawesome-free/css/all.min.css') }}" rel="stylesheet" type="text/css">
