@@ -34,6 +34,15 @@ class TaplogsController extends Controller
         
         // Gunakan method buildQuery yang sama untuk konsistensi data
         $query = $this->buildQuery($request);
+        if ($sinceId == 0) {
+            // LOGIKA BARU: Jika ID 0 (Halaman baru dibuka), ambil 1 terakhir saja
+            // Ini agar muatnya cepat dan tidak memicu notifikasi untuk data lama
+            $newLogs = $query->latest('tap_logs.id')->take(1)->get()->reverse(); 
+            // reverse() dikembalikan agar urutan array tetap ID kecil ke besar
+        } else {
+            // Jika ID > 0 (Polling rutin), ambil yang lebih baru dari ID itu
+            $newLogs = $query->where('tap_logs.id', '>', $sinceId)->get();
+        }
 
         $newLogs = $query->where('tap_logs.id', '>', $sinceId)->get();
 
