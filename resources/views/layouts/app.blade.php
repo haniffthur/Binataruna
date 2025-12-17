@@ -264,39 +264,32 @@
     <!-- ============================================================= -->
 
     <script>
-        $(document).ready(function() {
-        let lastLogId = 0;
-        let isFirstLoad = true;
+        $(document).ready(function () {
+            let lastLogId = 0;
+            let isFirstLoad = true;
 
-        function checkLatestTap() {
-            $.ajax({
-                url: '{{ route("api.tap-logs.latest") }}',
-                method: 'GET',
-                data: { since_id: lastLogId },
-                success: function(logs) {
-                    if (Array.isArray(logs) && logs.length > 0) {
-                        // Update ID terakhir
+            function checkLatestTap() {
+                $.ajax({
+                    url: '{{ route("api.tap-logs.latest") }}',
+                    method: 'GET',
+                    data: { since_id: lastLogId },
+                    success: function (logs) {
+                        if (!Array.isArray(logs) || logs.length === 0) return;
+
                         const maxId = Math.max(...logs.map(l => l.id));
                         if (maxId > lastLogId) lastLogId = maxId;
 
-                        // Jika bukan load pertama, tampilkan notif
-                        if (!isFirstLoad) {
-                            logs.forEach(function(log) {
-                                showNotification(log);
-                            });
+                        if (isFirstLoad) {
+                            isFirstLoad = false;
+                            return;
                         }
+
+                        logs.forEach(function (log) {
+                            showNotification(log);
+                        });
                     }
-                    
-                    // Matikan status first load setelah request pertama SUKSES
-                    isFirstLoad = false; 
-                },
-                complete: function() {
-                    // PENTING: Panggil lagi fungsi ini SETELAH request selesai
-                    // Ini mencegah request bertumpuk (race condition)
-                    setTimeout(checkLatestTap, 3000);
-                }
-            });
-        }
+                });
+            }
 
             function showNotification(data) {
                 const isSuccess = data.status == 1;

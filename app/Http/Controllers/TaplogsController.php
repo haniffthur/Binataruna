@@ -44,6 +44,8 @@ class TaplogsController extends Controller
             $newLogs = $query->where('tap_logs.id', '>', $sinceId)->get();
         }
 
+    
+
         // Ubah data menjadi format yang mudah digunakan oleh JavaScript
         $formattedLogs = $newLogs->map(function ($log) {
             
