@@ -43,10 +43,17 @@
             <form action="{{ route('transactions.member.store') }}" method="POST" enctype="multipart/form-data">
                 @csrf
                 
-                <div class="form-group row">
-                    <label class="col-sm-2 col-form-label font-weight-bold">Tanggal Transaksi</label>
+              
+
+                 <div class="form-group row">
+                    <label class="col-sm-2 col-form-label font-weight-bold">Waktu Transaksi</label>
                     <div class="col-sm-4">
+                        <label class="small text-muted mb-0">Tanggal</label>
                         <input type="date" name="transaction_date" class="form-control" value="{{ old('transaction_date', date('Y-m-d')) }}" required>
+                    </div>
+                    <div class="col-sm-3">
+                        <label class="small text-muted mb-0">Jam (Opsional)</label>
+                        <input type="time" name="transaction_time" class="form-control" value="{{ old('transaction_time', date('H:i')) }}" required>
                     </div>
                 </div>
                 <hr>

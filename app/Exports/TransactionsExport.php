@@ -116,7 +116,7 @@ class TransactionsExport implements FromQuery, WithHeadings, WithMapping, Should
             $transaction->transaction_type,
             $transaction->item_name ?? '-',
             $transaction->total_amount, 
-            Carbon::parse($transaction->transaction_date)->format('d-m-Y H:i'),
+            Carbon::parse($transaction->transaction_date)->format('d-m-Y | H:i'),
             $transaction->notes ?? '-', // <--- Map Notes
         ];
     }

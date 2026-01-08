@@ -148,6 +148,7 @@ class TransactionController extends Controller
                 'transaction_type' => 'required|in:lama,baru',
                 'class_id' => 'required|exists:classes,id',
                 'transaction_date' => 'required|date',
+                 'transaction_time' => 'required', 
                 'amount_paid' => 'required|numeric|min:0',
                 'registration_fee' => 'nullable|numeric|min:0',
                 'custom_total_amount' => 'required|numeric|min:0',
@@ -307,9 +308,16 @@ class TransactionController extends Controller
                 }
 
                 // Simpan Transaksi (Dengan Jam)
-                $trxDate = $request->filled('transaction_date') 
-                            ? Carbon::parse($request->transaction_date . ' ' . now()->format('H:i:s')) 
-                            : now();
+             $trxDate = now(); // Default sekarang
+                
+                if ($request->filled('transaction_date') && $request->filled('transaction_time')) {
+                    // Gabungkan Input Tanggal dan Input Jam
+                    $dateString = $request->transaction_date . ' ' . $request->transaction_time; // ex: 2025-01-08 14:30
+                    $trxDate = Carbon::parse($dateString);
+                } elseif ($request->filled('transaction_date')) {
+                    // Jika jam tidak diisi, pakai jam sekarang
+                    $trxDate = Carbon::parse($request->transaction_date . ' ' . now()->format('H:i:s'));
+                }
 
                 MemberTransaction::create([
                     'member_id' => $memberIdToUse,
@@ -404,6 +412,29 @@ class TransactionController extends Controller
         // Redirect ke receipt
         return redirect()->route('non-member-receipt.show', $trxResult['trx']->id);
     }
+   public function getMemberTransactionHistory($memberId)
+    {
+        $transactions = MemberTransaction::with(['details.purchasable'])
+            ->where('member_id', $memberId)
+            ->orderBy('transaction_date', 'desc')
+            ->take(5) 
+            ->get()
+            ->map(function ($trx) {
+                $itemName = $trx->details->first()->purchasable->name ?? '-';
+                $isCuti = str_contains(strtoupper($itemName), 'CUTI');
+
+                return [
+                    'date' => Carbon::parse($trx->transaction_date)->format('d/m/Y'),
+                    'item' => $itemName,
+                    'amount' => 'Rp ' . number_format($trx->total_amount, 0, ',', '.'),
+                    'notes' => $trx->notes ?? '-',
+                    'is_cuti' => $isCuti
+                ];
+            });
+
+        return response()->json($transactions);
+    }
+    
     public function exportExcel(Request $request) {
         $filters = $request->only(['type', 'name', 'period', 'start_date', 'end_date', 'class_id']);
         $fileName = 'Laporan_Transaksi_' . now()->format('Y-m-d_H-i') . '.xlsx';
