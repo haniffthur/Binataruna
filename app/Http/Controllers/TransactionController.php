@@ -19,45 +19,86 @@ use Illuminate\Validation\ValidationException;
 use Carbon\Carbon;
 use App\Exports\TransactionsExport;
 use Maatwebsite\Excel\Facades\Excel;
+use App\Exports\MemberPaymentStatusExport;
 
 class TransactionController extends Controller
 {
-    public function index(Request $request)
+   public function index(Request $request)
     {
-        // 1. Validasi input filter
+        // 1. VALIDASI FILTER
         $request->validate([
             'name' => 'nullable|string|max:255',
-            // PERBAIKAN: Tambahkan 'all_time' ke dalam validasi
-            'period' => 'nullable|in:all_time,today,this_week,this_month,custom', 
+            'period' => 'nullable|in:all_time,today,this_week,this_month,custom',
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'class_id' => 'nullable|integer|exists:classes,id',
-            'type' => 'nullable|in:all,member,non-member',
+            // 'type' dihapus dari validasi ketat karena kita pakai view_type
+            'view_type' => 'nullable|in:history,status', 
         ]);
 
-        // 2. Tentukan Rentang Tanggal
+        // 2. SETUP VARIABLE UMUM
         $filterPeriod = $request->input('period', 'all_time');
         $start = null;
         $end = null;
+        $schoolClasses = SchoolClass::orderBy('name')->get();
+        
+        // Ambil view_type dari request, default 'history' (Riwayat Transaksi)
+        $viewType = $request->input('view_type', 'history');
 
+        // Logic Tanggal
         switch ($filterPeriod) {
-            case 'today':
-                $start = now()->startOfDay(); $end = now()->endOfDay(); break;
-            case 'this_week':
-                $start = now()->startOfWeek(); $end = now()->endOfWeek(); break;
-            case 'this_month':
-                $start = now()->startOfMonth(); $end = now()->endOfMonth(); break;
+            case 'today': $start = now()->startOfDay(); $end = now()->endOfDay(); break;
+            case 'this_week': $start = now()->startOfWeek(); $end = now()->endOfWeek(); break;
+            case 'this_month': $start = now()->startOfMonth(); $end = now()->endOfMonth(); break;
             case 'custom':
-                // Pastikan start_date dan end_date tidak null sebelum diparse
-                if ($request->filled('start_date') && $request->filled('end_date')) {
+                if ($request->start_date && $request->end_date) {
                     $start = Carbon::parse($request->start_date)->startOfDay();
                     $end = Carbon::parse($request->end_date)->endOfDay();
                 }
                 break;
-            // case 'all_time': biarkan null agar mengambil semua data
         }
 
-        // 3. Query Member
+        // =========================================================
+        // KONDISI 1: MODE "CEK STATUS PEMBAYARAN" (SEMUA MEMBER)
+        // =========================================================
+        if ($viewType === 'status') {
+            // Kita ingin melihat SIAPA SAJA yang sudah/belum bayar di periode ini.
+            // Basis datanya adalah MEMBER (bukan transaksi).
+            
+            // Ambil semua member (Aktif maupun Tidak Aktif, sesuai request Anda sebelumnya agar semua tampil)
+            // Atau jika ingin yang aktif saja: ->where('is_active', true)
+            $membersQuery = Member::with(['schoolClass', 'masterCard']);
+
+            // Filter Nama Member
+            if ($request->filled('name')) {
+                $membersQuery->where('name', 'like', '%' . $request->name . '%');
+            }
+            // Filter Kelas Member
+            if ($request->filled('class_id')) {
+                $membersQuery->where('school_class_id', $request->class_id);
+            }
+
+            // Eager Load Transaksi (Hanya ambil yang sesuai periode filter)
+            // Ini agar kita tahu dia sudah bayar atau belum di bulan/minggu ini.
+            $membersQuery->with(['transactions' => function($q) use ($start, $end) {
+                if ($start && $end) {
+                    $q->whereBetween('transaction_date', [$start, $end]);
+                }
+                // Jika periode all_time, ambil transaksi terakhir saja
+                $q->latest('transaction_date');
+            }]);
+
+            $paymentStatusData = $membersQuery->orderBy('name')->paginate(20)->withQueryString();
+            
+            // Return View Mode Status
+            return view('transactions.index', compact('paymentStatusData', 'schoolClasses', 'viewType'));
+        }
+
+        // =========================================================
+        // KONDISI 2: MODE "RIWAYAT TRANSAKSI" (DEFAULT - YANG SUDAH BAYAR SAJA)
+        // =========================================================
+        
+        // Query Member Transactions
         $memberQuery = DB::table('member_transactions')
             ->join('members', 'member_transactions.member_id', '=', 'members.id')
             ->leftJoin('transaction_details', 'member_transactions.id', '=', 'transaction_details.detailable_id')
@@ -73,7 +114,7 @@ class TransactionController extends Controller
                 'classes.id as class_id'
             );
 
-        // 4. Query Non-Member
+        // Query Non-Member Transactions
         $nonMemberQuery = DB::table('non_member_transactions')
             ->select(
                 'id',
@@ -85,42 +126,39 @@ class TransactionController extends Controller
                 DB::raw("NULL as class_id")
             );
 
-        // 5. Terapkan Filter
+        // Filter Nama
         if ($request->filled('name')) {
             $memberQuery->where('members.name', 'like', '%' . $request->name . '%');
             $nonMemberQuery->where('non_member_transactions.customer_name', 'like', '%' . $request->name . '%');
         }
-
-        // Filter Tanggal (Hanya jika $start dan $end terisi)
+        // Filter Tanggal
         if ($start && $end) {
             $memberQuery->whereBetween('member_transactions.transaction_date', [$start, $end]);
             $nonMemberQuery->whereBetween('non_member_transactions.transaction_date', [$start, $end]);
         }
-
+        // Filter Kelas
         if ($request->filled('class_id')) {
             $memberQuery->where('classes.id', $request->class_id);
             $nonMemberQuery->whereRaw('1 = 0'); 
         }
 
-        // 6. Union & Execute
-        $type = $request->input('type', 'all');
-        
-        // Gunakan unionAll untuk performa lebih baik daripada union
+        // Gabung & Eksekusi
         $unionQuery = $memberQuery->unionAll($nonMemberQuery);
-        
         $finalQuery = DB::query()->fromSub($unionQuery, 'transactions');
-
-        if ($type === 'member') {
-            $finalQuery->where('transaction_type', 'Member');
-        } elseif ($type === 'non-member') {
-            $finalQuery->where('transaction_type', 'Non-Member');
+        
+        // Filter Tipe Transaksi (Member/Non-Member) - Opsional jika ada tab di view
+        if ($request->filled('type') && $request->type !== 'all') {
+            if ($request->type === 'member') $finalQuery->where('transaction_type', 'Member');
+            elseif ($request->type === 'non-member') $finalQuery->where('transaction_type', 'Non-Member');
         }
 
         $transactions = $finalQuery->orderBy('transaction_date', 'desc')->paginate(20)->withQueryString();
-        $schoolClasses = SchoolClass::orderBy('name')->get();
 
-        return view('transactions.index', compact('transactions', 'schoolClasses'));
+        // Return View Mode History
+        return view('transactions.index', compact('transactions', 'schoolClasses', 'viewType'));
     }
+
+
 
     // ========================================================================
     // FITUR BARU: TRANSAKSI MEMBER (Create & Store)
@@ -435,9 +473,23 @@ class TransactionController extends Controller
         return response()->json($transactions);
     }
     
-    public function exportExcel(Request $request) {
-        $filters = $request->only(['type', 'name', 'period', 'start_date', 'end_date', 'class_id']);
-        $fileName = 'Laporan_Transaksi_' . now()->format('Y-m-d_H-i') . '.xlsx';
-        return Excel::download(new TransactionsExport($filters), $fileName);
+    public function exportExcel(Request $request)
+    {
+        // Ambil semua filter
+        $filters = $request->all(); // Ambil semua termasuk view_type
+        
+        // Cek View Type untuk menentukan Class Export mana yang dipakai
+        $viewType = $request->input('view_type', 'history');
+
+        if ($viewType == 'status') {
+            // === EXPORT STATUS (SEMUA MEMBER) ===
+            $fileName = 'Laporan_Status_Pembayaran_' . now()->format('Y-m-d_H-i') . '.xlsx';
+            return Excel::download(new MemberPaymentStatusExport($filters), $fileName);
+            
+        } else {
+            // === EXPORT RIWAYAT (YANG SUDAH BAYAR SAJA) ===
+            $fileName = 'Laporan_Riwayat_Transaksi_' . now()->format('Y-m-d_H-i') . '.xlsx';
+            return Excel::download(new TransactionsExport($filters), $fileName);
+        }
     }
 }

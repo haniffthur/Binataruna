@@ -65,6 +65,8 @@ Route::middleware(['auth'])->group(function () {
         Route::get('/{member}/download-photo', [MemberController::class, 'downloadPhoto'])->name('download.photo');
         Route::post('/{member}/toggle-status', [MemberController::class, 'toggleStatus'])->name('toggle-status');
         Route::get('/{member}/export-log', [MemberController::class, 'exportLog'])->name('export-log');
+        Route::get('/payment-status-report', [MemberController::class, 'paymentStatusReportForm'])->name('payment-status-report');
+        Route::get('/payment-status-report/export', [MemberController::class, 'exportPaymentStatusReport'])->name('export-payment-status-report');
       
         
         // --- Laporan Absensi ---
