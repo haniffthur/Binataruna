@@ -3,6 +3,7 @@
 namespace App\Exports;
 
 use App\Models\Member;
+use App\Models\TapLog; // Pastikan model TapLog di-import
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
@@ -41,7 +42,8 @@ class MembersExport implements FromCollection, WithHeadings, WithMapping, WithSt
                 'id',
                 'name',
                 'school_class_id',
-                'master_card_id'
+                'master_card_id',
+                'join_date' // <-- TAMBAHKAN INI AGAR BISA DITAMPILKAN
             );
 
         // Terapkan filter yang diterima dari controller
@@ -79,7 +81,9 @@ class MembersExport implements FromCollection, WithHeadings, WithMapping, WithSt
             'No.',
             'Nama Member',
             'Kelas',
-            'Kartu RFID'
+            'Kartu RFID',
+            'Tanggal Bergabung', // <-- KOLOM BARU
+            'Tap Pertama Kali'   // <-- KOLOM BARU
         ];
     }
 
@@ -90,11 +94,31 @@ class MembersExport implements FromCollection, WithHeadings, WithMapping, WithSt
     {
         $this->memberCounter++;
         
+        // 1. Format Tanggal Bergabung
+        $joinDate = $member->join_date ? Carbon::parse($member->join_date)->format('d M Y') : '-';
+
+        // 2. Logika Tap Pertama Kali
+        $firstTap = 'Belum pernah tap';
+        if ($member->master_card_id) {
+            // Cari log tap paling lama (ASC) dari kartu ini
+            $tap = TapLog::where('master_card_id', $member->master_card_id)
+                        ->orderBy('tapped_at', 'asc')
+                        ->first();
+                        
+            if ($tap) {
+                $firstTap = Carbon::parse($tap->tapped_at)->format('d M Y, H:i:s');
+            }
+        } else {
+            $firstTap = 'Belum memiliki kartu';
+        }
+        
         return [
             $this->memberCounter,
             strtoupper($member->name), // Nama dalam huruf kapital untuk konsistensi
             $member->schoolClass->name ?? 'Belum Ditentukan',
-            $member->masterCard->cardno ?? 'Belum Terdaftar'
+            $member->masterCard->cardno ?? 'Belum Terdaftar',
+            $joinDate, // <-- MAPPING BARU
+            $firstTap  // <-- MAPPING BARU
         ];
     }
 
@@ -166,6 +190,26 @@ class MembersExport implements FromCollection, WithHeadings, WithMapping, WithSt
                     'size' => 10,
                     'name' => 'Consolas' // Font monospace untuk nomor kartu
                 ]
+            ],
+            // Style untuk kolom Tanggal Bergabung (kolom E)
+            'E:E' => [
+                'alignment' => [
+                    'horizontal' => Alignment::HORIZONTAL_CENTER,
+                    'vertical' => Alignment::VERTICAL_CENTER,
+                ],
+                'font' => [
+                    'size' => 10
+                ]
+            ],
+            // Style untuk kolom Tap Pertama (kolom F)
+            'F:F' => [
+                'alignment' => [
+                    'horizontal' => Alignment::HORIZONTAL_CENTER,
+                    'vertical' => Alignment::VERTICAL_CENTER,
+                ],
+                'font' => [
+                    'size' => 10
+                ]
             ]
         ];
     }
@@ -180,6 +224,8 @@ class MembersExport implements FromCollection, WithHeadings, WithMapping, WithSt
             'B' => 25,  // Nama Member
             'C' => 15,  // Kelas
             'D' => 20,  // Kartu RFID
+            'E' => 20,  // Tanggal Bergabung
+            'F' => 25,  // Tap Pertama Kali
         ];
     }
 
@@ -201,8 +247,8 @@ class MembersExport implements FromCollection, WithHeadings, WithMapping, WithSt
                 $sheet = $event->sheet->getDelegate();
                 $highestRow = $sheet->getHighestRow();
                 
-                // Border untuk seluruh data
-                $sheet->getStyle('A1:D' . $highestRow)->applyFromArray([
+                // Border untuk seluruh data (ubah batasnya dari D ke F)
+                $sheet->getStyle('A1:F' . $highestRow)->applyFromArray([
                     'borders' => [
                         'allBorders' => [
                             'borderStyle' => Border::BORDER_THIN,
@@ -211,10 +257,10 @@ class MembersExport implements FromCollection, WithHeadings, WithMapping, WithSt
                     ]
                 ]);
 
-                // Zebra striping untuk baris data (alternating colors)
+                // Zebra striping untuk baris data (ubah batasnya dari D ke F)
                 for ($i = 2; $i <= $highestRow; $i++) {
                     if ($i % 2 == 0) {
-                        $sheet->getStyle('A' . $i . ':D' . $i)->applyFromArray([
+                        $sheet->getStyle('A' . $i . ':F' . $i)->applyFromArray([
                             'fill' => [
                                 'fillType' => Fill::FILL_SOLID,
                                 'startColor' => ['rgb' => 'F2F2F2'] // Abu-abu terang
@@ -226,8 +272,8 @@ class MembersExport implements FromCollection, WithHeadings, WithMapping, WithSt
                 // Freeze panes (membekukan baris header)
                 $sheet->freezePane('A2');
 
-                // Auto filter untuk header
-                $sheet->setAutoFilter('A1:D' . $highestRow);
+                // Auto filter untuk header (ubah batasnya dari D ke F)
+                $sheet->setAutoFilter('A1:F' . $highestRow);
 
                 // Menambahkan informasi di bagian bawah
                 $footerRow = $highestRow + 2;
